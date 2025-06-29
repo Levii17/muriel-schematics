@@ -1,6 +1,6 @@
 import React from 'react';
 import List from '@mui/material/List';
-import ListItem from '@mui/material/ListItem';
+import ListItemButton from '@mui/material/ListItemButton';
 import ListItemIcon from '@mui/material/ListItemIcon';
 import ListItemText from '@mui/material/ListItemText';
 import Paper from '@mui/material/Paper';
@@ -72,16 +72,15 @@ const SymbolLibrary: React.FC = () => {
     <Paper elevation={1} sx={{ p: 1 }}>
       <List dense>
         {Object.values(SymbolType).map((type) => (
-          <ListItem
+          <ListItemButton
             key={type}
-            button
             draggable
             onDragStart={(e) => handleDragStart(e, type)}
             sx={{ cursor: 'grab', userSelect: 'none' }}
           >
             <ListItemIcon>{symbolIcons[type]}</ListItemIcon>
             <ListItemText primary={symbolLabels[type]} />
-          </ListItem>
+          </ListItemButton>
         ))}
       </List>
     </Paper>

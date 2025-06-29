@@ -1,12 +1,12 @@
 import React, { useRef, useEffect, useState } from 'react';
-import { Stage, Layer, Rect, Text, Group, Line, Image as KonvaImage } from 'react-konva';
+import { Stage, Layer, Rect, Text, Group, Line, Image as KonvaImage, Circle } from 'react-konva';
 import useImage from 'use-image';
 import murielLogo from '../assets/muriel-logo.png';
 import { useCanvasStore } from '../store/canvasStore';
-import { SymbolType } from '../types';
+import { SymbolType, WireType } from '../types';
 
 // A3 size at 72dpi: 420mm x 297mm ~ 1050 x 742 px
-const PAPER_WIDTH = 1050;
+const PAPER_WIDTH = 1200;
 const PAPER_HEIGHT = 742;
 const BORDER_THICKNESS = 6;
 const TITLE_BLOCK_HEIGHT = 110;
@@ -14,6 +14,7 @@ const TITLE_BLOCK_WIDTH = 500;
 const TITLE_BLOCK_ROWS = [40, 35, 35]; // heights for each row
 const TITLE_BLOCK_COLS = [70, 150, 150, 70, 60]; // widths for each col
 const GRID_SPACING = 20;
+const SNAP_RADIUS = 20;
 
 const DEFAULT_TITLE_BLOCK = {
   logo: 'murielLogo', // Placeholder for logo
@@ -41,7 +42,7 @@ const fieldDefs = [
   { key: 'pageTotal', label: 'Page Total', row: 2, col: 4, rowSpan: 1, colSpan: 1 },
 ];
 
-const CanvasArea: React.FC = () => {
+const CanvasArea: React.FC<{ wireToolActive?: boolean }> = ({ wireToolActive }) => {
   const stageRef = useRef<any>(null);
   const [titleBlock, setTitleBlock] = useState(DEFAULT_TITLE_BLOCK);
   const [editingField, setEditingField] = useState<string | null>(null);
@@ -53,6 +54,10 @@ const CanvasArea: React.FC = () => {
   const selectedElements = useCanvasStore((s) => s.selectedElements);
   const selectElement = useCanvasStore((s) => s.selectElement);
   const moveSymbol = useCanvasStore((s) => s.moveSymbol);
+  const wires = useCanvasStore((s) => s.wires);
+  const updateWire = useCanvasStore((s) => s.updateWire);
+  const addWire = useCanvasStore((s) => s.addWire);
+  const [drawingWire, setDrawingWire] = useState<{ start: { x: number; y: number } | null; mouse: { x: number; y: number } | null }>({ start: null, mouse: null });
 
   // Handle drop from SymbolLibrary
   const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
@@ -162,6 +167,68 @@ const CanvasArea: React.FC = () => {
     }
     return lines;
   };
+
+  // Render wires (selectable and moveable)
+  const renderWires = () =>
+    wires.map((wire) => {
+      const isSelected = selectedElements.includes(wire.id);
+      return (
+        <React.Fragment key={wire.id}>
+          <Line
+            points={[
+              wire.startPoint.x,
+              wire.startPoint.y,
+              wire.endPoint.x,
+              wire.endPoint.y,
+            ]}
+            stroke={isSelected ? '#1976d2' : wire.properties.color || '#333'}
+            strokeWidth={isSelected ? (wire.properties.thickness || 2) + 2 : wire.properties.thickness || 2}
+            onClick={() => selectElement(wire.id)}
+            onTap={() => selectElement(wire.id)}
+            lineCap="round"
+            lineJoin="round"
+            shadowForStrokeEnabled={isSelected}
+            shadowColor={isSelected ? '#1976d2' : undefined}
+            shadowBlur={isSelected ? 6 : 0}
+          />
+          {/* Draggable handles for selected wire */}
+          {isSelected && (
+            <>
+              <Circle
+                x={wire.startPoint.x}
+                y={wire.startPoint.y}
+                radius={8}
+                fill="#1976d2"
+                opacity={0.7}
+                draggable
+                onDragEnd={e => {
+                  updateWire(wire.id, {
+                    startPoint: { x: e.target.x(), y: e.target.y() },
+                  });
+                }}
+                onClick={e => { e.cancelBubble = true; selectElement(wire.id); }}
+                onTap={e => { e.cancelBubble = true; selectElement(wire.id); }}
+              />
+              <Circle
+                x={wire.endPoint.x}
+                y={wire.endPoint.y}
+                radius={8}
+                fill="#1976d2"
+                opacity={0.7}
+                draggable
+                onDragEnd={e => {
+                  updateWire(wire.id, {
+                    endPoint: { x: e.target.x(), y: e.target.y() },
+                  });
+                }}
+                onClick={e => { e.cancelBubble = true; selectElement(wire.id); }}
+                onTap={e => { e.cancelBubble = true; selectElement(wire.id); }}
+              />
+            </>
+          )}
+        </React.Fragment>
+      );
+    });
 
   // Render symbols (selectable and moveable)
   const renderSymbols = () =>
@@ -286,11 +353,85 @@ const CanvasArea: React.FC = () => {
     });
   };
 
+  // Find nearest symbol center to a point
+  const getNearestSymbolCenter = (point: { x: number; y: number }) => {
+    let minDist = Infinity;
+    let nearest = null;
+    symbols.forEach((symbol) => {
+      const center = {
+        x: symbol.position.x + 20, // 40x40 symbol
+        y: symbol.position.y + 20,
+      };
+      const dist = Math.hypot(center.x - point.x, center.y - point.y);
+      if (dist < minDist && dist <= SNAP_RADIUS) {
+        minDist = dist;
+        nearest = center;
+      }
+    });
+    return nearest;
+  };
+
+  // ESC to cancel wire drawing
+  useEffect(() => {
+    if (!wireToolActive) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setDrawingWire({ start: null, mouse: null });
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [wireToolActive]);
+
+  // Handle interactive wire drawing (with snapping)
+  const handleStageMouseDown = (e: any) => {
+    if (!wireToolActive) return;
+    const stage = e.target.getStage();
+    const pointer = stage.getPointerPosition();
+    if (!pointer) return;
+    // Only allow drawing in the drawing area (not over title block)
+    if (
+      pointer.x > BORDER_THICKNESS &&
+      pointer.y > BORDER_THICKNESS &&
+      pointer.x < PAPER_WIDTH - BORDER_THICKNESS &&
+      pointer.y < PAPER_HEIGHT - BORDER_THICKNESS - TITLE_BLOCK_HEIGHT
+    ) {
+      const snap = getNearestSymbolCenter(pointer) || pointer;
+      if (!drawingWire.start) {
+        setDrawingWire({ start: snap, mouse: snap });
+      } else {
+        // Finish wire
+        addWire({
+          startPoint: drawingWire.start,
+          endPoint: snap,
+          wireType: WireType.CONTROL,
+          properties: {
+            color: '#000000',
+            thickness: 2,
+            material: 'copper',
+            insulation: 'PVC',
+          },
+        });
+        setDrawingWire({ start: null, mouse: null });
+      }
+    }
+  };
+
+  const handleStageMouseMove = (e: any) => {
+    if (!wireToolActive) return;
+    if (!drawingWire.start) return;
+    const stage = e.target.getStage();
+    const pointer = stage.getPointerPosition();
+    if (!pointer) return;
+    const snap = getNearestSymbolCenter(pointer) || pointer;
+    setDrawingWire((dw) => ({ ...dw, mouse: snap }));
+  };
+
   // Main render
   return (
     <div
       ref={containerRef}
-      style={{ width: '100%', height: '100%', position: 'relative', background: '#222' }}
+      style={{ width: '100%', height: '100%', position: 'relative', background: '#222', cursor: wireToolActive ? 'crosshair' : 'default' }}
       onDrop={handleDrop}
       onDragOver={handleDragOver}
     >
@@ -322,6 +463,8 @@ const CanvasArea: React.FC = () => {
         scaleX={containerSize.width / PAPER_WIDTH}
         scaleY={containerSize.height / PAPER_HEIGHT}
         style={{ background: '#fff', borderRadius: 8, boxShadow: '0 2px 8px #0003' }}
+        onMouseDown={handleStageMouseDown}
+        onMouseMove={handleStageMouseMove}
       >
         <Layer>
           {/* EGD Border */}
@@ -336,6 +479,51 @@ const CanvasArea: React.FC = () => {
           />
           {/* Grid */}
           {renderGrid()}
+          {/* Render wires behind symbols */}
+          {renderWires()}
+          {/* Preview wire while drawing */}
+          {wireToolActive && drawingWire.start && drawingWire.mouse && (
+            <>
+              <Line
+                points={[
+                  drawingWire.start.x,
+                  drawingWire.start.y,
+                  drawingWire.mouse.x,
+                  drawingWire.mouse.y,
+                ]}
+                stroke="#1976d2"
+                strokeWidth={3}
+                dash={[8, 8]}
+                lineCap="round"
+                lineJoin="round"
+                listening={false}
+              />
+              {/* Snap highlight at end */}
+              <Rect
+                x={drawingWire.mouse.x - 6}
+                y={drawingWire.mouse.y - 6}
+                width={12}
+                height={12}
+                fill="#1976d2"
+                opacity={0.2}
+                cornerRadius={6}
+                listening={false}
+              />
+            </>
+          )}
+          {/* Snap highlight at start */}
+          {wireToolActive && drawingWire.start && (
+            <Rect
+              x={drawingWire.start.x - 6}
+              y={drawingWire.start.y - 6}
+              width={12}
+              height={12}
+              fill="#1976d2"
+              opacity={0.2}
+              cornerRadius={6}
+              listening={false}
+            />
+          )}
           {/* Title Block */}
           <Group>
             <Rect

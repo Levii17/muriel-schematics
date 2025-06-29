@@ -1,6 +1,6 @@
 import React from 'react';
 import { ValidationError } from '../services/ValidationService';
-import { Paper, Typography, List, ListItem, ListItemText, Alert, AlertTitle, Box } from '@mui/material';
+import { Paper, Typography, List, ListItem, ListItemIcon, ListItemText, Alert, AlertTitle, Box } from '@mui/material';
 import ErrorIcon from '@mui/icons-material/Error';
 import WarningIcon from '@mui/icons-material/Warning';
 

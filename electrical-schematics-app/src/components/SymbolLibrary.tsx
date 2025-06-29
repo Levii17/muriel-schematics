@@ -36,7 +36,7 @@ const SymbolLibrary: React.FC = () => {
     },
   ];
 
-  const handleDragStart = (event: React.DragEvent<HTMLDivElement>, symbolId: string) => {
+  const handleDragStart = (event: React.DragEvent<HTMLElement>, symbolId: string) => {
     event.dataTransfer.setData('symbolId', symbolId);
   };
 

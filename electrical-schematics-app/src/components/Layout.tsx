@@ -26,6 +26,7 @@ import CanvasArea from './CanvasArea';
 import PropertiesPanel from './PropertiesPanel';
 import { useCanvasStore } from '../store/canvasStore';
 import Tooltip from '@mui/material/Tooltip';
+import CenterFocusStrongIcon from '@mui/icons-material/CenterFocusStrong';
 
 const drawerWidth = 260;
 
@@ -41,6 +42,7 @@ const Layout: React.FC<{ children?: React.ReactNode }> = ({ children }) => {
   const zoom = useCanvasStore((s) => s.zoom);
   const undo = useCanvasStore((s) => s.undo);
   const redo = useCanvasStore((s) => s.redo);
+  const setPan = useCanvasStore((s) => s.setPan);
 
   const handleDelete = () => {
     selectedElements.forEach((id) => {
@@ -132,6 +134,7 @@ const Layout: React.FC<{ children?: React.ReactNode }> = ({ children }) => {
           <Tooltip title="Zoom Out (Ctrl+-)"><IconButton onClick={() => setZoom(Math.max(zoom - 0.1, 0.2))}><ZoomOutIcon /></IconButton></Tooltip>
           <Typography variant="body2" sx={{ mx: 1 }}>{Math.round(zoom * 100)}%</Typography>
           <Tooltip title="Zoom In (Ctrl+=)"><IconButton onClick={() => setZoom(Math.min(zoom + 0.1, 2))}><ZoomInIcon /></IconButton></Tooltip>
+          <Tooltip title="Reset View"><IconButton onClick={() => { setZoom(1); setPan({ x: 0, y: 0 }); }}><CenterFocusStrongIcon /></IconButton></Tooltip>
         </Paper>
         {/* Canvas Area */}
         <Box sx={{ flex: 1, display: 'flex', minHeight: 0 }}>

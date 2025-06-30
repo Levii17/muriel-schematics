@@ -67,6 +67,14 @@ const CanvasArea: React.FC<CanvasAreaProps> = ({ wireToolActive, selectToolActiv
   const updateWire = useCanvasStore((s) => s.updateWire);
   const addWire = useCanvasStore((s) => s.addWire);
   const [drawingWire, setDrawingWire] = useState<{ start: { x: number; y: number } | null; mouse: { x: number; y: number } | null }>({ start: null, mouse: null });
+  const zoom = useCanvasStore((s) => s.zoom);
+  const setZoom = useCanvasStore((s) => s.setZoom);
+  const pan = useCanvasStore((s) => s.pan);
+  const setPan = useCanvasStore((s) => s.setPan);
+  // Pan state for drag
+  const [isPanning, setIsPanning] = useState(false);
+  const [lastPointer, setLastPointer] = useState<{ x: number; y: number } | null>(null);
+  const [spacePressed, setSpacePressed] = useState(false);
 
   // Handle drop from SymbolLibrary
   const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
@@ -415,8 +423,54 @@ const CanvasArea: React.FC<CanvasAreaProps> = ({ wireToolActive, selectToolActiv
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [wireToolActive]);
 
-  // Handle interactive wire drawing (with snapping)
-  const handleStageMouseDown = (e: any) => {
+  // Mouse wheel zoom (centered on cursor)
+  const handleWheel = useCallback((e: any) => {
+    e.evt.preventDefault();
+    const stage = e.target.getStage();
+    const oldScale = zoom;
+    const pointer = stage.getPointerPosition();
+    if (!pointer) return;
+    const scaleBy = 1.08;
+    const direction = e.evt.deltaY > 0 ? -1 : 1;
+    let newScale = direction > 0 ? oldScale * scaleBy : oldScale / scaleBy;
+    newScale = Math.max(0.2, Math.min(2, newScale));
+    // Calculate new pan so zoom is centered on pointer
+    const mousePointTo = {
+      x: (pointer.x - pan.x) / oldScale,
+      y: (pointer.y - pan.y) / oldScale,
+    };
+    const newPan = {
+      x: pointer.x - mousePointTo.x * newScale,
+      y: pointer.y - mousePointTo.y * newScale,
+    };
+    setZoom(newScale);
+    setPan(newPan);
+  }, [zoom, pan, setZoom, setPan]);
+
+  // Listen for spacebar keydown/up
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.code === 'Space') setSpacePressed(true);
+    };
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (e.code === 'Space') setSpacePressed(false);
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+    };
+  }, []);
+
+  // Pan with hand tool or middle mouse
+  const handleStageMouseDown = useCallback((e: any) => {
+    if (handToolActive || spacePressed || e.evt.button === 1) {
+      setIsPanning(true);
+      setLastPointer(e.target.getStage().getPointerPosition());
+      document.body.style.cursor = 'grabbing';
+      return;
+    }
     if (!wireToolActive) return;
     const stage = e.target.getStage();
     const pointer = stage.getPointerPosition();
@@ -447,9 +501,19 @@ const CanvasArea: React.FC<CanvasAreaProps> = ({ wireToolActive, selectToolActiv
         setDrawingWire({ start: null, mouse: null });
       }
     }
-  };
+  }, [handToolActive, spacePressed, wireToolActive, setIsPanning, setLastPointer]);
 
-  const handleStageMouseMove = (e: any) => {
+  const handleStageMouseMove = useCallback((e: any) => {
+    if (isPanning && lastPointer) {
+      const stage = e.target.getStage();
+      const pointer = stage.getPointerPosition();
+      if (!pointer) return;
+      const dx = pointer.x - lastPointer.x;
+      const dy = pointer.y - lastPointer.y;
+      setPan({ x: pan.x + dx, y: pan.y + dy });
+      setLastPointer(pointer);
+      return;
+    }
     if (!wireToolActive) return;
     if (!drawingWire.start) return;
     const stage = e.target.getStage();
@@ -457,7 +521,26 @@ const CanvasArea: React.FC<CanvasAreaProps> = ({ wireToolActive, selectToolActiv
     if (!pointer) return;
     const snap = getNearestSymbolCenter(pointer) || pointer;
     setDrawingWire((dw) => ({ ...dw, mouse: snap }));
-  };
+  }, [isPanning, lastPointer, pan, setPan, wireToolActive]);
+
+  const handleStageMouseUp = useCallback(() => {
+    setIsPanning(false);
+    setLastPointer(null);
+    document.body.style.cursor = '';
+  }, []);
+
+  // Double-click to reset zoom/pan
+  const handleStageDblClick = useCallback(() => {
+    setZoom(1);
+    setPan({ x: 0, y: 0 });
+  }, [setZoom, setPan]);
+
+  // Attach mouseup to window for pan end
+  useEffect(() => {
+    if (!isPanning) return;
+    window.addEventListener('mouseup', handleStageMouseUp);
+    return () => window.removeEventListener('mouseup', handleStageMouseUp);
+  }, [isPanning, handleStageMouseUp]);
 
   // Memoize grid lines
   const gridLines = useMemo(() => renderGrid(), [symbols.length, wires.length]);
@@ -483,7 +566,7 @@ const CanvasArea: React.FC<CanvasAreaProps> = ({ wireToolActive, selectToolActiv
         height: '100%',
         position: 'relative',
         background: '#222',
-        cursor: selectToolActive ? 'pointer' : handToolActive ? 'grab' : wireToolActive ? 'crosshair' : 'default',
+        cursor: isPanning ? 'grabbing' : spacePressed ? 'grab' : selectToolActive ? 'pointer' : handToolActive ? 'grab' : wireToolActive ? 'crosshair' : 'default',
       }}
       onDrop={handleDropMemo}
       onDragOver={handleDragOverMemo}
@@ -513,11 +596,15 @@ const CanvasArea: React.FC<CanvasAreaProps> = ({ wireToolActive, selectToolActiv
         ref={stageRef}
         width={containerSize.width}
         height={containerSize.height}
-        scaleX={containerSize.width / PAPER_WIDTH}
-        scaleY={containerSize.height / PAPER_HEIGHT}
+        scaleX={zoom}
+        scaleY={zoom}
+        x={pan.x}
+        y={pan.y}
         style={{ background: '#fff', borderRadius: 8, boxShadow: '0 2px 8px #0003' }}
+        onWheel={handleWheel}
         onMouseDown={handleStageMouseDownMemo}
         onMouseMove={handleStageMouseMoveMemo}
+        onDblClick={handleStageDblClick}
       >
         <Layer>
           {/* EGD Border */}

@@ -1,206 +1,80 @@
-import React, { useState, useEffect } from 'react';
+import React, { useMemo } from 'react';
 import { useCanvasStore } from '../store/canvasStore';
-import Button from '@mui/material/Button';
-import Stack from '@mui/material/Stack';
-import DeleteIcon from '@mui/icons-material/Delete';
-import ContentCopyIcon from '@mui/icons-material/ContentCopy';
+import { SymbolType, WireType, ElectricalSymbol, Wire } from '../types';
+import { TextField, Typography, Divider, Box } from '@mui/material';
 
 const PropertiesPanel: React.FC = () => {
   const symbols = useCanvasStore((s) => s.symbols);
   const wires = useCanvasStore((s) => s.wires);
-  const selected = useCanvasStore((s) => s.selectedElements);
-  const updateSymbol = useCanvasStore((s) => s.updateSymbol);
-  const updateWire = useCanvasStore((s) => s.updateWire);
-  const deleteSymbol = useCanvasStore((s) => s.deleteSymbol);
-  const deleteWire = useCanvasStore((s) => s.deleteWire);
-  const duplicateSelected = useCanvasStore((s) => s.duplicateSelected);
+  const selectedElements = useCanvasStore((s) => s.selectedElements);
 
-  const selectedSymbol = symbols.find((s) => selected.length === 1 && s.id === selected[0]);
-  const selectedWire = wires.find((w) => selected.length === 1 && w.id === selected[0]);
+  // Find selected items
+  const selectedSymbols = useMemo(() => symbols.filter(s => selectedElements.includes(s.id)), [symbols, selectedElements]);
+  const selectedWires = useMemo(() => wires.filter(w => selectedElements.includes(w.id)), [wires, selectedElements]);
+  const totalSelected = selectedSymbols.length + selectedWires.length;
 
-  // Local state for symbol property edits
-  const [symbolDraft, setSymbolDraft] = useState<any>(null);
-
-  useEffect(() => {
-    if (selectedSymbol) {
-      setSymbolDraft({ ...selectedSymbol.properties });
-    } else {
-      setSymbolDraft(null);
-    }
-  }, [selectedSymbol]);
-
-  const handleSymbolDraftChange = (key: string, value: any) => {
-    setSymbolDraft((prev: any) => ({ ...prev, [key]: value }));
-  };
-
-  const handleApply = () => {
-    if (selectedSymbol && symbolDraft) {
-      updateSymbol(selectedSymbol.id, { properties: symbolDraft });
-    }
-  };
-
-  const isSymbolChanged = selectedSymbol && symbolDraft && JSON.stringify(selectedSymbol.properties) !== JSON.stringify(symbolDraft);
-
-  const handleDelete = () => {
-    if (selectedSymbol) deleteSymbol(selectedSymbol.id);
-    if (selectedWire) deleteWire(selectedWire.id);
-  };
-
-  const handleDuplicate = () => {
-    duplicateSelected();
-  };
-
-  if (!selectedSymbol && !selectedWire) {
-    return <div style={{ color: '#888', fontStyle: 'italic' }}>Select a symbol or wire to view its properties.</div>;
+  if (totalSelected === 0) {
+    return <Typography variant="body2" color="textSecondary">Select a symbol or wire to edit its properties.</Typography>;
   }
 
+  // Single selection
+  if (totalSelected === 1) {
+    const item = selectedSymbols[0] || selectedWires[0];
+    const isSymbol = !!selectedSymbols[0];
+    return (
+      <Box>
+        <Typography variant="subtitle1" sx={{ mb: 1 }}>
+          {isSymbol ? 'Symbol Properties' : 'Wire Properties'}
+        </Typography>
+        <Divider sx={{ mb: 2 }} />
+        {/* Example: Show label and color for both, type for symbol, thickness for wire */}
+        <TextField
+          label="Label"
+          value={item.properties?.label || ''}
+          fullWidth
+          margin="dense"
+          // onChange={...} // To be implemented in next step
+        />
+        {isSymbol && (
+          <TextField
+            label="Type"
+            value={item.type}
+            fullWidth
+            margin="dense"
+            disabled
+          />
+        )}
+        {!isSymbol && (
+          <TextField
+            label="Color"
+            value={item.properties?.color || ''}
+            fullWidth
+            margin="dense"
+            // onChange={...}
+          />
+        )}
+        {/* Add more fields as needed */}
+      </Box>
+    );
+  }
+
+  // Multi-selection: show only batch-editable fields
   return (
-    <div>
-      <Stack direction="row" spacing={1} sx={{ mb: 2 }}>
-        <Button
-          variant="outlined"
-          color="primary"
-          size="small"
-          startIcon={<ContentCopyIcon />}
-          onClick={handleDuplicate}
-        >
-          Duplicate
-        </Button>
-        <Button
-          variant="outlined"
-          color="error"
-          size="small"
-          startIcon={<DeleteIcon />}
-          onClick={handleDelete}
-        >
-          Delete
-        </Button>
-      </Stack>
-      {selectedSymbol && (
-        <>
-          <h3>Symbol Properties</h3>
-          <div style={{ marginBottom: 8 }}>
-            <strong>Type:</strong> {selectedSymbol.type}
-          </div>
-          <div style={{ marginBottom: 8 }}>
-            <label>
-              Label:<br />
-              <input
-                type="text"
-                value={symbolDraft?.label || ''}
-                onChange={(e) => handleSymbolDraftChange('label', e.target.value)}
-                style={{ width: '100%' }}
-              />
-            </label>
-          </div>
-          <div style={{ marginBottom: 8 }}>
-            <label>
-              Rating:<br />
-              <input
-                type="text"
-                value={symbolDraft?.rating || ''}
-                onChange={(e) => handleSymbolDraftChange('rating', e.target.value)}
-                style={{ width: '100%' }}
-              />
-            </label>
-          </div>
-          <div style={{ marginBottom: 8 }}>
-            <label>
-              Manufacturer:<br />
-              <input
-                type="text"
-                value={symbolDraft?.manufacturer || ''}
-                onChange={(e) => handleSymbolDraftChange('manufacturer', e.target.value)}
-                style={{ width: '100%' }}
-              />
-            </label>
-          </div>
-          <div style={{ marginBottom: 8 }}>
-            <label>
-              Part Number:<br />
-              <input
-                type="text"
-                value={symbolDraft?.partNumber || ''}
-                onChange={(e) => handleSymbolDraftChange('partNumber', e.target.value)}
-                style={{ width: '100%' }}
-              />
-            </label>
-          </div>
-          <div style={{ marginBottom: 8 }}>
-            <label>
-              Description:<br />
-              <textarea
-                value={symbolDraft?.description || ''}
-                onChange={(e) => handleSymbolDraftChange('description', e.target.value)}
-                style={{ width: '100%' }}
-                rows={3}
-              />
-            </label>
-          </div>
-          <Button
-            variant="contained"
-            color="primary"
-            size="small"
-            onClick={handleApply}
-            disabled={!isSymbolChanged}
-            sx={{ mt: 1 }}
-          >
-            Apply
-          </Button>
-        </>
-      )}
-      {selectedWire && (
-        <>
-          <h3>Wire Properties</h3>
-          <div style={{ marginBottom: 8 }}>
-            <label>
-              Color:<br />
-              <input
-                type="color"
-                value={selectedWire.properties.color || '#000000'}
-                onChange={(e) => updateWire(selectedWire.id, { properties: { ...selectedWire.properties, color: e.target.value } })}
-                style={{ width: 40, height: 24, border: 'none', background: 'none' }}
-              />
-            </label>
-          </div>
-          <div style={{ marginBottom: 8 }}>
-            <label>
-              Thickness (px):<br />
-              <input
-                type="number"
-                min={1}
-                max={10}
-                value={selectedWire.properties.thickness || 2}
-                onChange={(e) => updateWire(selectedWire.id, { properties: { ...selectedWire.properties, thickness: Number(e.target.value) } })}
-                style={{ width: '100%' }}
-              />
-            </label>
-          </div>
-          <div style={{ marginBottom: 8 }}>
-            <label>
-              Material:<br />
-              <input
-                type="text"
-                value={selectedWire.properties.material || ''}
-                onChange={(e) => updateWire(selectedWire.id, { properties: { ...selectedWire.properties, material: e.target.value } })}
-                style={{ width: '100%' }}
-              />
-            </label>
-          </div>
-          <div style={{ marginBottom: 8 }}>
-            <label>
-              Insulation:<br />
-              <input
-                type="text"
-                value={selectedWire.properties.insulation || ''}
-                onChange={(e) => updateWire(selectedWire.id, { properties: { ...selectedWire.properties, insulation: e.target.value } })}
-                style={{ width: '100%' }}
-              />
-            </label>
-          </div>
-        </>
-      )}
-    </div>
+    <Box>
+      <Typography variant="subtitle1" sx={{ mb: 1 }}>
+        Batch Edit Properties
+      </Typography>
+      <Divider sx={{ mb: 2 }} />
+      <TextField
+        label="Label"
+        value={''}
+        fullWidth
+        margin="dense"
+        // onChange={...}
+        placeholder="Set label for all selected"
+      />
+      {/* Add more batch-editable fields as needed */}
+    </Box>
   );
 };
 

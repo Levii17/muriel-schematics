@@ -15,6 +15,7 @@ const TITLE_BLOCK_ROWS = [40, 35, 35]; // heights for each row
 const TITLE_BLOCK_COLS = [70, 150, 150, 70, 60]; // widths for each col
 const GRID_SPACING = 20;
 const SNAP_RADIUS = 20;
+const DRAG_THRESHOLD = 5;
 
 const DEFAULT_TITLE_BLOCK = {
   logo: 'murielLogo', 
@@ -75,13 +76,22 @@ const CanvasArea: React.FC<CanvasAreaProps> = ({ wireToolActive, selectToolActiv
   const [isPanning, setIsPanning] = useState(false);
   const [lastPointer, setLastPointer] = useState<{ x: number; y: number } | null>(null);
   const [spacePressed, setSpacePressed] = useState(false);
+  const [pendingPan, setPendingPan] = useState<{ x: number; y: number } | null>(null);
 
   // Handle drop from SymbolLibrary
   const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     const symbolType = e.dataTransfer.getData('application/x-symbol-type') as SymbolType;
     if (!symbolType) return;
-    const boundingRect = stageRef.current?.container().getBoundingClientRect();
+    let boundingRect = undefined;
+    try {
+      boundingRect = stageRef.current?.container().getBoundingClientRect();
+    } catch {}
+    if (!boundingRect) {
+      // fallback: use event target
+      const target = e.target as HTMLElement;
+      boundingRect = target.getBoundingClientRect ? target.getBoundingClientRect() : { left: 0, top: 0 };
+    }
     const x = e.clientX - boundingRect.left;
     const y = e.clientY - boundingRect.top;
     if (
@@ -99,7 +109,7 @@ const CanvasArea: React.FC<CanvasAreaProps> = ({ wireToolActive, selectToolActiv
         connections: [],
       });
     }
-    e.dataTransfer.clearData(); // Clear drag data after drop
+    e.dataTransfer.clearData();
   };
 
   const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
@@ -271,6 +281,12 @@ const CanvasArea: React.FC<CanvasAreaProps> = ({ wireToolActive, selectToolActiv
     });
 
   // Render symbols (selectable and moveable)
+  const handleSymbolClick = useCallback((symbolId: string) => {
+    if (selectToolActive && !isPanning && !pendingPan) {
+      selectElement(symbolId);
+    }
+  }, [selectToolActive, isPanning, pendingPan, selectElement]);
+
   const renderSymbols = () =>
     symbols.map((symbol) => (
       <Group
@@ -278,8 +294,8 @@ const CanvasArea: React.FC<CanvasAreaProps> = ({ wireToolActive, selectToolActiv
         x={symbol.position.x}
         y={symbol.position.y}
         draggable={!!handToolActive}
-        onClick={selectToolActive ? () => selectElement(symbol.id) : undefined}
-        onTap={selectToolActive ? () => selectElement(symbol.id) : undefined}
+        onClick={() => handleSymbolClick(symbol.id)}
+        onTap={() => handleSymbolClick(symbol.id)}
         onDragEnd={handToolActive ? e => {
           moveSymbol(symbol.id, { x: e.target.x(), y: e.target.y() });
         } : undefined}
@@ -463,51 +479,66 @@ const CanvasArea: React.FC<CanvasAreaProps> = ({ wireToolActive, selectToolActiv
     };
   }, []);
 
-  // Pan with hand tool or middle mouse
-  const handleStageMouseDown = useCallback((e: any) => {
-    if (handToolActive || spacePressed || e.evt.button === 1) {
-      setIsPanning(true);
-      setLastPointer(e.target.getStage().getPointerPosition());
-      document.body.style.cursor = 'grabbing';
-      return;
-    }
-    if (!wireToolActive) return;
-    const stage = e.target.getStage();
-    const pointer = stage.getPointerPosition();
-    if (!pointer) return;
-    // Only allow drawing in the drawing area (not over title block)
-    if (
-      pointer.x > BORDER_THICKNESS &&
-      pointer.y > BORDER_THICKNESS &&
-      pointer.x < PAPER_WIDTH - BORDER_THICKNESS &&
-      pointer.y < PAPER_HEIGHT - BORDER_THICKNESS - TITLE_BLOCK_HEIGHT
-    ) {
-      const snap = getNearestSymbolCenter(pointer) || pointer;
-      if (!drawingWire.start) {
-        setDrawingWire({ start: snap, mouse: snap });
-      } else {
-        // Finish wire
-        addWire({
-          startPoint: drawingWire.start,
-          endPoint: snap,
-          wireType: WireType.CONTROL,
-          properties: {
-            color: '#000000',
-            thickness: 2,
-            material: 'copper',
-            insulation: 'PVC',
-          },
-        });
-        setDrawingWire({ start: null, mouse: null });
-      }
-    }
-  }, [handToolActive, spacePressed, wireToolActive, setIsPanning, setLastPointer]);
+  // Pan with hand tool, spacebar, or middle mouse only
+  const shouldStartPan = (e: any) => {
+    return handToolActive || spacePressed || e.evt.button === 1;
+  };
 
-  const handleStageMouseMove = useCallback((e: any) => {
-    if (isPanning && lastPointer) {
+  const handleStageMouseDown = useCallback((e: any) => {
+    // If wire tool is active, always process wire drawing logic first
+    if (wireToolActive) {
       const stage = e.target.getStage();
       const pointer = stage.getPointerPosition();
       if (!pointer) return;
+      // Only allow drawing in the drawing area (not over title block)
+      if (
+        pointer.x > BORDER_THICKNESS &&
+        pointer.y > BORDER_THICKNESS &&
+        pointer.x < PAPER_WIDTH - BORDER_THICKNESS &&
+        pointer.y < PAPER_HEIGHT - BORDER_THICKNESS - TITLE_BLOCK_HEIGHT
+      ) {
+        const snap = getNearestSymbolCenter(pointer) || pointer;
+        if (!drawingWire.start) {
+          setDrawingWire({ start: snap, mouse: snap });
+        } else {
+          // Finish wire
+          addWire({
+            startPoint: drawingWire.start,
+            endPoint: snap,
+            wireType: WireType.CONTROL,
+            properties: {
+              color: '#000000',
+              thickness: 2,
+              material: 'copper',
+              insulation: 'PVC',
+            },
+          });
+          setDrawingWire({ start: null, mouse: null });
+        }
+      }
+      return;
+    }
+    // Only use pan/drag threshold logic for Hand tool, Spacebar, or middle mouse
+    if (shouldStartPan(e)) {
+      const pointer = e.target.getStage().getPointerPosition();
+      setPendingPan(pointer);
+      setLastPointer(pointer);
+      return;
+    }
+  }, [wireToolActive, drawingWire, addWire, setDrawingWire, getNearestSymbolCenter, shouldStartPan, setPendingPan, setLastPointer]);
+
+  const handleStageMouseMove = useCallback((e: any) => {
+    const pointer = e.target.getStage().getPointerPosition();
+    if (pendingPan && pointer) {
+      const dx = pointer.x - pendingPan.x;
+      const dy = pointer.y - pendingPan.y;
+      if (Math.abs(dx) > DRAG_THRESHOLD || Math.abs(dy) > DRAG_THRESHOLD) {
+        setIsPanning(true);
+        setPendingPan(null);
+        document.body.style.cursor = 'grabbing';
+      }
+    }
+    if (isPanning && lastPointer && pointer) {
       const dx = pointer.x - lastPointer.x;
       const dy = pointer.y - lastPointer.y;
       setPan({ x: pan.x + dx, y: pan.y + dy });
@@ -516,31 +547,50 @@ const CanvasArea: React.FC<CanvasAreaProps> = ({ wireToolActive, selectToolActiv
     }
     if (!wireToolActive) return;
     if (!drawingWire.start) return;
-    const stage = e.target.getStage();
-    const pointer = stage.getPointerPosition();
     if (!pointer) return;
     const snap = getNearestSymbolCenter(pointer) || pointer;
     setDrawingWire((dw) => ({ ...dw, mouse: snap }));
-  }, [isPanning, lastPointer, pan, setPan, wireToolActive]);
+  }, [pendingPan, isPanning, lastPointer, pan, setPan, wireToolActive]);
 
-  const handleStageMouseUp = useCallback(() => {
+  const handleStageMouseUp = useCallback((e?: any) => {
+    if (pendingPan) {
+      // If mouseup before drag threshold, treat as click (for selection)
+      setPendingPan(null);
+      setIsPanning(false);
+      setLastPointer(null);
+      document.body.style.cursor = '';
+      return;
+    }
     setIsPanning(false);
     setLastPointer(null);
     document.body.style.cursor = '';
+  }, [pendingPan]);
+
+  // Always reset pan state on window blur
+  useEffect(() => {
+    const resetPan = () => {
+      setIsPanning(false);
+      setPendingPan(null);
+      setLastPointer(null);
+      document.body.style.cursor = '';
+    };
+    window.addEventListener('blur', resetPan);
+    return () => window.removeEventListener('blur', resetPan);
   }, []);
+
+  // Attach mouseup to window for pan end
+  useEffect(() => {
+    if (!isPanning && !pendingPan) return;
+    const up = (e: any) => handleStageMouseUp(e);
+    window.addEventListener('mouseup', up);
+    return () => window.removeEventListener('mouseup', up);
+  }, [isPanning, pendingPan, handleStageMouseUp]);
 
   // Double-click to reset zoom/pan
   const handleStageDblClick = useCallback(() => {
     setZoom(1);
     setPan({ x: 0, y: 0 });
   }, [setZoom, setPan]);
-
-  // Attach mouseup to window for pan end
-  useEffect(() => {
-    if (!isPanning) return;
-    window.addEventListener('mouseup', handleStageMouseUp);
-    return () => window.removeEventListener('mouseup', handleStageMouseUp);
-  }, [isPanning, handleStageMouseUp]);
 
   // Memoize grid lines
   const gridLines = useMemo(() => renderGrid(), [symbols.length, wires.length]);
@@ -552,7 +602,7 @@ const CanvasArea: React.FC<CanvasAreaProps> = ({ wireToolActive, selectToolActiv
   const titleBlockGridMemo = useMemo(() => renderTitleBlockGrid(), []);
   const titleBlockFieldsMemo = useMemo(() => renderTitleBlockFields(), [titleBlock, logoImage]);
   // Memoize event handlers
-  const handleDropMemo = useCallback(handleDrop, [addSymbol]);
+  const handleDropMemo = useCallback(handleDrop, []);
   const handleDragOverMemo = useCallback(handleDragOver, []);
   const handleStageMouseDownMemo = useCallback(handleStageMouseDown, [wireToolActive, drawingWire, symbols]);
   const handleStageMouseMoveMemo = useCallback(handleStageMouseMove, [wireToolActive, drawingWire, symbols]);

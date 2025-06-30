@@ -11,32 +11,61 @@ export interface SymbolCatalogEntry {
 
 export const symbolCatalog: SymbolCatalogEntry[] = [
   {
-    type: SymbolType.BATTERY,
-    name: 'Battery',
-    svgPath: 'M2 10 H22 M6 7 V13 M18 7 V13',
-    defaultProperties: { label: 'BAT', rating: '12V' },
+    type: SymbolType.CIRCUIT_BREAKER,
+    name: 'Circuit Breaker (Double Pole)',
+    svgPath: 'M4 6 H20 M4 18 H20 M8 6 V18 M16 6 V18', // Simple representation
+    defaultProperties: { label: 'CB', poles: 2 },
     defaultConnectionPoints: [
-      { id: 'cp1', position: { x: 2, y: 10 }, type: 'input' },
-      { id: 'cp2', position: { x: 22, y: 10 }, type: 'output' },
+      { id: 'cp1', position: { x: 4, y: 6 }, type: 'input' },
+      { id: 'cp2', position: { x: 20, y: 6 }, type: 'output' },
+      { id: 'cp3', position: { x: 4, y: 18 }, type: 'input' },
+      { id: 'cp4', position: { x: 20, y: 18 }, type: 'output' },
     ],
   },
   {
-    type: SymbolType.LIGHT,
-    name: 'Light',
-    svgPath: 'M12 2 A10 10 0 1 0 12 22 A10 10 0 1 0 12 2',
-    defaultProperties: { label: 'LAMP', rating: '60W' },
+    type: SymbolType.CIRCUIT_BREAKER,
+    name: 'Circuit Breaker (Triple Pole)',
+    svgPath: 'M4 6 H20 M4 12 H20 M4 18 H20 M7 6 V18 M13 6 V18 M19 6 V18',
+    defaultProperties: { label: 'CB', poles: 3 },
     defaultConnectionPoints: [
-      { id: 'cp1', position: { x: 2, y: 12 }, type: 'input' },
-      { id: 'cp2', position: { x: 22, y: 12 }, type: 'output' },
+      { id: 'cp1', position: { x: 4, y: 6 }, type: 'input' },
+      { id: 'cp2', position: { x: 20, y: 6 }, type: 'output' },
+      { id: 'cp3', position: { x: 4, y: 12 }, type: 'input' },
+      { id: 'cp4', position: { x: 20, y: 12 }, type: 'output' },
+      { id: 'cp5', position: { x: 4, y: 18 }, type: 'input' },
+      { id: 'cp6', position: { x: 20, y: 18 }, type: 'output' },
     ],
   },
   {
-    type: SymbolType.EARTH,
-    name: 'Earth',
-    svgPath: 'M12 2 V22 M7 17 H17 M9 19 H15',
-    defaultProperties: { label: 'GND' },
+    type: SymbolType.SWITCH,
+    name: 'Isolator (Double Pole)',
+    svgPath: 'M4 6 H20 M4 18 H20 M8 6 L12 18 M16 6 L12 18',
+    defaultProperties: { label: 'ISOL', poles: 2 },
     defaultConnectionPoints: [
-      { id: 'cp1', position: { x: 12, y: 22 }, type: 'neutral' },
+      { id: 'cp1', position: { x: 4, y: 6 }, type: 'input' },
+      { id: 'cp2', position: { x: 20, y: 6 }, type: 'output' },
+      { id: 'cp3', position: { x: 4, y: 18 }, type: 'input' },
+      { id: 'cp4', position: { x: 20, y: 18 }, type: 'output' },
+    ],
+  },
+  {
+    type: SymbolType.PUSH_BUTTON,
+    name: 'Push Button (Start)',
+    svgPath: 'M12 4 V20 M8 12 H16',
+    defaultProperties: { label: 'START' },
+    defaultConnectionPoints: [
+      { id: 'cp1', position: { x: 12, y: 4 }, type: 'input' },
+      { id: 'cp2', position: { x: 12, y: 20 }, type: 'output' },
+    ],
+  },
+  {
+    type: SymbolType.RELAY,
+    name: 'Coil (Contactor)',
+    svgPath: 'M8 8 Q12 16 16 8 M8 16 Q12 8 16 16',
+    defaultProperties: { label: 'K', type: 'contactor' },
+    defaultConnectionPoints: [
+      { id: 'cp1', position: { x: 8, y: 12 }, type: 'input' },
+      { id: 'cp2', position: { x: 16, y: 12 }, type: 'output' },
     ],
   },
 ]; 

@@ -1,17 +1,44 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useCallback } from 'react';
 import { useCanvasStore } from '../store/canvasStore';
-import { SymbolType, WireType, ElectricalSymbol, Wire } from '../types';
-import { TextField, Typography, Divider, Box } from '@mui/material';
+import { SymbolType, WireType, ElectricalSymbol, Wire, WireProperties } from '../types';
+import { TextField, Typography, Divider, Box, Button, MenuItem, InputLabel, FormControl, Select } from '@mui/material';
+import type { SelectChangeEvent } from '@mui/material/Select';
 
-const PropertiesPanel: React.FC = () => {
+const thicknessOptions = [1, 2, 3, 4, 5];
+
+function debounce<T extends (...args: any[]) => void>(fn: T, delay: number) {
+  let timer: NodeJS.Timeout;
+  return (...args: Parameters<T>) => {
+    clearTimeout(timer);
+    timer = setTimeout(() => fn(...args), delay);
+  };
+}
+
+const getWireProperties = (props: Partial<WireProperties> = {}): WireProperties => ({
+  color: props.color ?? '#000000',
+  thickness: props.thickness ?? 1,
+  material: props.material ?? 'copper',
+  insulation: props.insulation ?? 'PVC',
+  ...props,
+});
+
+const PropertiesPanel: React.FC = React.memo(() => {
   const symbols = useCanvasStore((s) => s.symbols);
   const wires = useCanvasStore((s) => s.wires);
   const selectedElements = useCanvasStore((s) => s.selectedElements);
+  const updateSymbol = useCanvasStore((s) => s.updateSymbol);
+  const updateWire = useCanvasStore((s) => s.updateWire);
+  const undo = useCanvasStore((s) => s.undo);
+  const redo = useCanvasStore((s) => s.redo);
 
   // Find selected items
   const selectedSymbols = useMemo(() => symbols.filter(s => selectedElements.includes(s.id)), [symbols, selectedElements]);
   const selectedWires = useMemo(() => wires.filter(w => selectedElements.includes(w.id)), [wires, selectedElements]);
   const totalSelected = selectedSymbols.length + selectedWires.length;
+
+  // Debounced update for text fields
+  const debouncedUpdateSymbol = useMemo(() => debounce(updateSymbol, 200), [updateSymbol]);
+  const debouncedUpdateWire = useMemo(() => debounce(updateWire, 200), [updateWire]);
 
   if (totalSelected === 0) {
     return <Typography variant="body2" color="textSecondary">Select a symbol or wire to edit its properties.</Typography>;
@@ -21,61 +48,133 @@ const PropertiesPanel: React.FC = () => {
   if (totalSelected === 1) {
     const item = selectedSymbols[0] || selectedWires[0];
     const isSymbol = !!selectedSymbols[0];
+    const handleChange = (field: string, value: any) => {
+      if (isSymbol) {
+        debouncedUpdateSymbol(item.id, { properties: { ...item.properties, [field]: value } });
+      } else {
+        debouncedUpdateWire(item.id, { properties: getWireProperties({ ...item.properties, [field]: value }) });
+      }
+    };
+    const handleSelectChange = (field: string) => (e: SelectChangeEvent) => {
+      handleChange(field, e.target.value);
+    };
+    const handleReset = () => {
+      if (isSymbol) {
+        updateSymbol(item.id, { properties: {} });
+      } else {
+        updateWire(item.id, { properties: getWireProperties() });
+      }
+    };
+    // Validation for thickness
+    const thickness = item.properties?.thickness || 1;
+    const thicknessError = isNaN(Number(thickness)) || Number(thickness) < 1 || Number(thickness) > 5;
     return (
       <Box>
         <Typography variant="subtitle1" sx={{ mb: 1 }}>
           {isSymbol ? 'Symbol Properties' : 'Wire Properties'}
         </Typography>
         <Divider sx={{ mb: 2 }} />
-        {/* Example: Show label and color for both, type for symbol, thickness for wire */}
-        <TextField
-          label="Label"
-          value={item.properties?.label || ''}
-          fullWidth
-          margin="dense"
-          // onChange={...} // To be implemented in next step
-        />
-        {isSymbol && (
+        {/* Appearance group */}
+        <Typography variant="caption" sx={{ fontWeight: 600 }}>Appearance</Typography>
+        <Box sx={{ mb: 2 }}>
           <TextField
-            label="Type"
-            value={item.type}
+            label="Label"
+            value={item.properties?.label || ''}
             fullWidth
             margin="dense"
-            disabled
+            onChange={e => handleChange('label', e.target.value)}
           />
-        )}
-        {!isSymbol && (
+          {!isSymbol && (
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 1 }}>
+              <TextField
+                label="Color"
+                type="color"
+                value={item.properties?.color || '#000000'}
+                fullWidth={false}
+                margin="dense"
+                sx={{ width: 60, minWidth: 60, p: 0, bgcolor: 'transparent' }}
+                InputLabelProps={{ shrink: true }}
+                onChange={e => handleChange('color', e.target.value)}
+              />
+              <FormControl margin="dense" sx={{ minWidth: 80 }}>
+                <InputLabel id="thickness-label">Thickness</InputLabel>
+                <Select
+                  labelId="thickness-label"
+                  value={thickness}
+                  label="Thickness"
+                  onChange={handleSelectChange('thickness')}
+                  error={thicknessError}
+                >
+                  {thicknessOptions.map(opt => (
+                    <MenuItem key={opt} value={opt}>{opt} px</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Box>
+          )}
+        </Box>
+        {/* Electrical group */}
+        <Typography variant="caption" sx={{ fontWeight: 600 }}>Electrical</Typography>
+        <Box sx={{ mb: 2 }}>
+          {isSymbol && (
+            <TextField
+              label="Type"
+              value={item.type}
+              fullWidth
+              margin="dense"
+              disabled
+            />
+          )}
           <TextField
-            label="Color"
-            value={item.properties?.color || ''}
+            label="Rating"
+            value={item.properties?.rating || ''}
             fullWidth
             margin="dense"
-            // onChange={...}
+            onChange={e => handleChange('rating', e.target.value)}
           />
-        )}
-        {/* Add more fields as needed */}
+        </Box>
+        <Button variant="outlined" size="small" color="secondary" sx={{ mt: 1 }} onClick={handleReset}>
+          Reset to Default
+        </Button>
       </Box>
     );
   }
 
   // Multi-selection: show only batch-editable fields
+  const handleBatchChange = (field: string, value: any) => {
+    selectedSymbols.forEach(symbol => updateSymbol(symbol.id, { properties: { ...symbol.properties, [field]: value } }));
+    selectedWires.forEach(wire => updateWire(wire.id, { properties: getWireProperties({ ...wire.properties, [field]: value }) }));
+  };
   return (
     <Box>
       <Typography variant="subtitle1" sx={{ mb: 1 }}>
         Batch Edit Properties
       </Typography>
       <Divider sx={{ mb: 2 }} />
-      <TextField
-        label="Label"
-        value={''}
-        fullWidth
-        margin="dense"
-        // onChange={...}
-        placeholder="Set label for all selected"
-      />
+      <Typography variant="caption" sx={{ fontWeight: 600 }}>Appearance</Typography>
+      <Box sx={{ mb: 2 }}>
+        <TextField
+          label="Label"
+          value={''}
+          fullWidth
+          margin="dense"
+          placeholder="Set label for all selected"
+          onChange={e => handleBatchChange('label', e.target.value)}
+        />
+        <TextField
+          label="Color"
+          type="color"
+          value={'#000000'}
+          fullWidth={false}
+          margin="dense"
+          sx={{ width: 60, minWidth: 60, p: 0, bgcolor: 'transparent' }}
+          InputLabelProps={{ shrink: true }}
+          onChange={e => handleBatchChange('color', e.target.value)}
+        />
+      </Box>
       {/* Add more batch-editable fields as needed */}
     </Box>
   );
-};
+});
 
 export default PropertiesPanel; 

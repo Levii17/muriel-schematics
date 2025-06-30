@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useCanvasStore } from '../store/canvasStore';
 import Button from '@mui/material/Button';
 import Stack from '@mui/material/Stack';
@@ -17,6 +17,29 @@ const PropertiesPanel: React.FC = () => {
 
   const selectedSymbol = symbols.find((s) => selected.length === 1 && s.id === selected[0]);
   const selectedWire = wires.find((w) => selected.length === 1 && w.id === selected[0]);
+
+  // Local state for symbol property edits
+  const [symbolDraft, setSymbolDraft] = useState<any>(null);
+
+  useEffect(() => {
+    if (selectedSymbol) {
+      setSymbolDraft({ ...selectedSymbol.properties });
+    } else {
+      setSymbolDraft(null);
+    }
+  }, [selectedSymbol]);
+
+  const handleSymbolDraftChange = (key: string, value: any) => {
+    setSymbolDraft((prev: any) => ({ ...prev, [key]: value }));
+  };
+
+  const handleApply = () => {
+    if (selectedSymbol && symbolDraft) {
+      updateSymbol(selectedSymbol.id, { properties: symbolDraft });
+    }
+  };
+
+  const isSymbolChanged = selectedSymbol && symbolDraft && JSON.stringify(selectedSymbol.properties) !== JSON.stringify(symbolDraft);
 
   const handleDelete = () => {
     if (selectedSymbol) deleteSymbol(selectedSymbol.id);
@@ -64,8 +87,8 @@ const PropertiesPanel: React.FC = () => {
               Label:<br />
               <input
                 type="text"
-                value={selectedSymbol.properties.label || ''}
-                onChange={(e) => updateSymbol(selectedSymbol.id, { properties: { ...selectedSymbol.properties, label: e.target.value } })}
+                value={symbolDraft?.label || ''}
+                onChange={(e) => handleSymbolDraftChange('label', e.target.value)}
                 style={{ width: '100%' }}
               />
             </label>
@@ -75,8 +98,8 @@ const PropertiesPanel: React.FC = () => {
               Rating:<br />
               <input
                 type="text"
-                value={selectedSymbol.properties.rating || ''}
-                onChange={(e) => updateSymbol(selectedSymbol.id, { properties: { ...selectedSymbol.properties, rating: e.target.value } })}
+                value={symbolDraft?.rating || ''}
+                onChange={(e) => handleSymbolDraftChange('rating', e.target.value)}
                 style={{ width: '100%' }}
               />
             </label>
@@ -86,8 +109,8 @@ const PropertiesPanel: React.FC = () => {
               Manufacturer:<br />
               <input
                 type="text"
-                value={selectedSymbol.properties.manufacturer || ''}
-                onChange={(e) => updateSymbol(selectedSymbol.id, { properties: { ...selectedSymbol.properties, manufacturer: e.target.value } })}
+                value={symbolDraft?.manufacturer || ''}
+                onChange={(e) => handleSymbolDraftChange('manufacturer', e.target.value)}
                 style={{ width: '100%' }}
               />
             </label>
@@ -97,8 +120,8 @@ const PropertiesPanel: React.FC = () => {
               Part Number:<br />
               <input
                 type="text"
-                value={selectedSymbol.properties.partNumber || ''}
-                onChange={(e) => updateSymbol(selectedSymbol.id, { properties: { ...selectedSymbol.properties, partNumber: e.target.value } })}
+                value={symbolDraft?.partNumber || ''}
+                onChange={(e) => handleSymbolDraftChange('partNumber', e.target.value)}
                 style={{ width: '100%' }}
               />
             </label>
@@ -107,13 +130,23 @@ const PropertiesPanel: React.FC = () => {
             <label>
               Description:<br />
               <textarea
-                value={selectedSymbol.properties.description || ''}
-                onChange={(e) => updateSymbol(selectedSymbol.id, { properties: { ...selectedSymbol.properties, description: e.target.value } })}
+                value={symbolDraft?.description || ''}
+                onChange={(e) => handleSymbolDraftChange('description', e.target.value)}
                 style={{ width: '100%' }}
                 rows={3}
               />
             </label>
           </div>
+          <Button
+            variant="contained"
+            color="primary"
+            size="small"
+            onClick={handleApply}
+            disabled={!isSymbolChanged}
+            sx={{ mt: 1 }}
+          >
+            Apply
+          </Button>
         </>
       )}
       {selectedWire && (

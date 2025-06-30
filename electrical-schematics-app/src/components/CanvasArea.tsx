@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useState } from 'react';
+import React, { useRef, useEffect, useState, useMemo, useCallback } from 'react';
 import { Stage, Layer, Rect, Text, Group, Line, Image as KonvaImage, Circle } from 'react-konva';
 import useImage from 'use-image';
 import murielLogo from '../assets/muriel-logo.png';
@@ -17,7 +17,7 @@ const GRID_SPACING = 20;
 const SNAP_RADIUS = 20;
 
 const DEFAULT_TITLE_BLOCK = {
-  logo: 'murielLogo', // Placeholder for logo
+  logo: 'murielLogo', 
   organization: 'Organization',
   name: 'Name',
   details: 'Details',
@@ -42,7 +42,16 @@ const fieldDefs = [
   { key: 'pageTotal', label: 'Page Total', row: 2, col: 4, rowSpan: 1, colSpan: 1 },
 ];
 
-const CanvasArea: React.FC<{ wireToolActive?: boolean }> = ({ wireToolActive }) => {
+// Replace the current CanvasArea definition with the following:
+interface CanvasAreaProps {
+  wireToolActive?: boolean;
+  selectToolActive?: boolean;
+  handToolActive?: boolean;
+  showGrid?: boolean;
+  snapToGrid?: boolean;
+}
+
+const CanvasArea: React.FC<CanvasAreaProps> = ({ wireToolActive, selectToolActive, handToolActive, showGrid }) => {
   const stageRef = useRef<any>(null);
   const [titleBlock, setTitleBlock] = useState(DEFAULT_TITLE_BLOCK);
   const [editingField, setEditingField] = useState<string | null>(null);
@@ -82,6 +91,7 @@ const CanvasArea: React.FC<{ wireToolActive?: boolean }> = ({ wireToolActive }) 
         connections: [],
       });
     }
+    e.dataTransfer.clearData(); // Clear drag data after drop
   };
 
   const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
@@ -173,7 +183,25 @@ const CanvasArea: React.FC<{ wireToolActive?: boolean }> = ({ wireToolActive }) 
     wires.map((wire) => {
       const isSelected = selectedElements.includes(wire.id);
       return (
-        <React.Fragment key={wire.id}>
+        <Group
+          key={wire.id}
+          draggable={selectToolActive || handToolActive}
+          onDragEnd={(selectToolActive || handToolActive) ? e => {
+            const group = e.target;
+            const dx = group.x();
+            const dy = group.y();
+
+            updateWire(wire.id, {
+              startPoint: { x: wire.startPoint.x + dx, y: wire.startPoint.y + dy },
+              endPoint: { x: wire.endPoint.x + dx, y: wire.endPoint.y + dy }
+            });
+
+            group.x(0);
+            group.y(0);
+            e.cancelBubble = true;
+          } : undefined}
+          onDragStart={e => { e.cancelBubble = true; }}
+        >
           <Line
             points={[
               wire.startPoint.x,
@@ -183,8 +211,8 @@ const CanvasArea: React.FC<{ wireToolActive?: boolean }> = ({ wireToolActive }) 
             ]}
             stroke={isSelected ? '#1976d2' : wire.properties.color || '#333'}
             strokeWidth={isSelected ? (wire.properties.thickness || 2) + 2 : wire.properties.thickness || 2}
-            onClick={() => selectElement(wire.id)}
-            onTap={() => selectElement(wire.id)}
+            onClick={selectToolActive ? () => selectElement(wire.id) : undefined}
+            onTap={selectToolActive ? () => selectElement(wire.id) : undefined}
             lineCap="round"
             lineJoin="round"
             shadowForStrokeEnabled={isSelected}
@@ -200,14 +228,16 @@ const CanvasArea: React.FC<{ wireToolActive?: boolean }> = ({ wireToolActive }) 
                 radius={8}
                 fill="#1976d2"
                 opacity={0.7}
-                draggable
-                onDragEnd={e => {
+                draggable={selectToolActive || handToolActive}
+                onDragStart={e => { e.cancelBubble = true; }}
+                onDragEnd={(selectToolActive || handToolActive) ? e => {
                   updateWire(wire.id, {
                     startPoint: { x: e.target.x(), y: e.target.y() },
                   });
-                }}
-                onClick={e => { e.cancelBubble = true; selectElement(wire.id); }}
-                onTap={e => { e.cancelBubble = true; selectElement(wire.id); }}
+                  e.cancelBubble = true;
+                } : undefined}
+                onClick={selectToolActive ? e => { e.cancelBubble = true; selectElement(wire.id); } : undefined}
+                onTap={selectToolActive ? e => { e.cancelBubble = true; selectElement(wire.id); } : undefined}
               />
               <Circle
                 x={wire.endPoint.x}
@@ -215,18 +245,20 @@ const CanvasArea: React.FC<{ wireToolActive?: boolean }> = ({ wireToolActive }) 
                 radius={8}
                 fill="#1976d2"
                 opacity={0.7}
-                draggable
-                onDragEnd={e => {
+                draggable={selectToolActive || handToolActive}
+                onDragStart={e => { e.cancelBubble = true; }}
+                onDragEnd={(selectToolActive || handToolActive) ? e => {
                   updateWire(wire.id, {
                     endPoint: { x: e.target.x(), y: e.target.y() },
                   });
-                }}
-                onClick={e => { e.cancelBubble = true; selectElement(wire.id); }}
-                onTap={e => { e.cancelBubble = true; selectElement(wire.id); }}
+                  e.cancelBubble = true;
+                } : undefined}
+                onClick={selectToolActive ? e => { e.cancelBubble = true; selectElement(wire.id); } : undefined}
+                onTap={selectToolActive ? e => { e.cancelBubble = true; selectElement(wire.id); } : undefined}
               />
             </>
           )}
-        </React.Fragment>
+        </Group>
       );
     });
 
@@ -237,12 +269,12 @@ const CanvasArea: React.FC<{ wireToolActive?: boolean }> = ({ wireToolActive }) 
         key={symbol.id}
         x={symbol.position.x}
         y={symbol.position.y}
-        draggable
-        onClick={() => selectElement(symbol.id)}
-        onTap={() => selectElement(symbol.id)}
-        onDragEnd={e => {
+        draggable={!!handToolActive}
+        onClick={selectToolActive ? () => selectElement(symbol.id) : undefined}
+        onTap={selectToolActive ? () => selectElement(symbol.id) : undefined}
+        onDragEnd={handToolActive ? e => {
           moveSymbol(symbol.id, { x: e.target.x(), y: e.target.y() });
-        }}
+        } : undefined}
       >
         <Rect
           width={40}
@@ -427,13 +459,34 @@ const CanvasArea: React.FC<{ wireToolActive?: boolean }> = ({ wireToolActive }) 
     setDrawingWire((dw) => ({ ...dw, mouse: snap }));
   };
 
+  // Memoize grid lines
+  const gridLines = useMemo(() => renderGrid(), [symbols.length, wires.length]);
+  // Memoize wires
+  const wiresMemo = useMemo(() => renderWires(), [wires, selectedElements, selectToolActive, handToolActive]);
+  // Memoize symbols
+  const symbolsMemo = useMemo(() => renderSymbols(), [symbols, selectedElements, selectToolActive, handToolActive]);
+  // Memoize title block grid and fields
+  const titleBlockGridMemo = useMemo(() => renderTitleBlockGrid(), []);
+  const titleBlockFieldsMemo = useMemo(() => renderTitleBlockFields(), [titleBlock, logoImage]);
+  // Memoize event handlers
+  const handleDropMemo = useCallback(handleDrop, [addSymbol]);
+  const handleDragOverMemo = useCallback(handleDragOver, []);
+  const handleStageMouseDownMemo = useCallback(handleStageMouseDown, [wireToolActive, drawingWire, symbols]);
+  const handleStageMouseMoveMemo = useCallback(handleStageMouseMove, [wireToolActive, drawingWire, symbols]);
+
   // Main render
   return (
     <div
       ref={containerRef}
-      style={{ width: '100%', height: '100%', position: 'relative', background: '#222', cursor: wireToolActive ? 'crosshair' : 'default' }}
-      onDrop={handleDrop}
-      onDragOver={handleDragOver}
+      style={{
+        width: '100%',
+        height: '100%',
+        position: 'relative',
+        background: '#222',
+        cursor: selectToolActive ? 'pointer' : handToolActive ? 'grab' : wireToolActive ? 'crosshair' : 'default',
+      }}
+      onDrop={handleDropMemo}
+      onDragOver={handleDragOverMemo}
     >
       {/* Editable input overlay */}
       {editingField && inputPos && (
@@ -463,8 +516,8 @@ const CanvasArea: React.FC<{ wireToolActive?: boolean }> = ({ wireToolActive }) 
         scaleX={containerSize.width / PAPER_WIDTH}
         scaleY={containerSize.height / PAPER_HEIGHT}
         style={{ background: '#fff', borderRadius: 8, boxShadow: '0 2px 8px #0003' }}
-        onMouseDown={handleStageMouseDown}
-        onMouseMove={handleStageMouseMove}
+        onMouseDown={handleStageMouseDownMemo}
+        onMouseMove={handleStageMouseMoveMemo}
       >
         <Layer>
           {/* EGD Border */}
@@ -478,9 +531,9 @@ const CanvasArea: React.FC<{ wireToolActive?: boolean }> = ({ wireToolActive }) 
             listening={false}
           />
           {/* Grid */}
-          {renderGrid()}
+          {showGrid !== false && gridLines}
           {/* Render wires behind symbols */}
-          {renderWires()}
+          {wiresMemo}
           {/* Preview wire while drawing */}
           {wireToolActive && drawingWire.start && drawingWire.mouse && (
             <>
@@ -535,15 +588,15 @@ const CanvasArea: React.FC<{ wireToolActive?: boolean }> = ({ wireToolActive }) 
               stroke="#111"
               strokeWidth={2}
             />
-            {renderTitleBlockGrid()}
-            {renderTitleBlockFields()}
+            {titleBlockGridMemo}
+            {titleBlockFieldsMemo}
           </Group>
           {/* Render symbols */}
-          {renderSymbols()}
+          {symbolsMemo}
         </Layer>
       </Stage>
     </div>
   );
 };
 
-export default CanvasArea; 
+export default React.memo(CanvasArea); 

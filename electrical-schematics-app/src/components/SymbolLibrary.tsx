@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import List from '@mui/material/List';
 import ListItemButton from '@mui/material/ListItemButton';
 import ListItemIcon from '@mui/material/ListItemIcon';
@@ -63,9 +63,20 @@ const symbolLabels: Record<SymbolType, string> = {
 };
 
 const SymbolLibrary: React.FC = () => {
+  const [isDragging, setIsDragging] = useState<SymbolType | null>(null);
+
   const handleDragStart = (e: React.DragEvent, symbolType: SymbolType) => {
+    if (isDragging) {
+      e.preventDefault();
+      return;
+    }
+    setIsDragging(symbolType);
     e.dataTransfer.setData('application/x-symbol-type', symbolType);
     e.dataTransfer.effectAllowed = 'copy';
+  };
+
+  const handleDragEnd = () => {
+    setIsDragging(null);
   };
 
   return (
@@ -74,9 +85,10 @@ const SymbolLibrary: React.FC = () => {
         {Object.values(SymbolType).map((type) => (
           <ListItemButton
             key={type}
-            draggable
+            draggable={!isDragging || isDragging === type}
             onDragStart={(e) => handleDragStart(e, type)}
-            sx={{ cursor: 'grab', userSelect: 'none' }}
+            onDragEnd={handleDragEnd}
+            sx={{ cursor: isDragging === type ? 'grabbing' : 'grab', userSelect: 'none', opacity: isDragging && isDragging !== type ? 0.5 : 1 }}
           >
             <ListItemIcon>{symbolIcons[type]}</ListItemIcon>
             <ListItemText primary={symbolLabels[type]} />

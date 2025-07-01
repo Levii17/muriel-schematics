@@ -11,6 +11,7 @@ import {
   WireProperties,
   ConnectionPoint
 } from '../types';
+import { symbolCatalog } from '../symbols/catalog';
 
 interface CanvasStore extends CanvasState {
   // Actions
@@ -107,16 +108,122 @@ export const useCanvasStore = create<CanvasStore>()(
       },
 
       // Symbol actions
-      addSymbol: (symbolData) => { get()._pushToHistory(); set((state) => ({ symbols: [...state.symbols, { ...symbolData, id: generateId() }] })); },
-      updateSymbol: (id, updates) => { get()._pushToHistory(); set((state) => ({ symbols: state.symbols.map(symbol => symbol.id === id ? { ...symbol, ...updates } : symbol) })); },
+      addSymbol: (symbolData) => {
+        get()._pushToHistory();
+        // Validate and auto-correct symbol data
+        const catalogEntry = symbolCatalog.find((s) => s.type === symbolData.type);
+        if (!catalogEntry) {
+          console.warn(`Symbol type '${symbolData.type}' not found in catalog. Adding as-is.`);
+          set((state) => ({ symbols: [...state.symbols, { ...symbolData, id: generateId() }] }));
+          return;
+        }
+        // Merge properties with catalog defaults
+        const mergedProperties = { ...catalogEntry.defaultProperties, ...symbolData.properties };
+        // Ensure all connection points have required fields
+        const mergedConnections = (catalogEntry.defaultConnectionPoints || []).map((cp) => {
+          const userCp: Partial<ConnectionPoint> = (symbolData.connections || []).find((c) => c.id === cp.id) || {};
+          return {
+            ...cp,
+            ...userCp,
+            connected: typeof userCp.connected === 'boolean' ? userCp.connected : false,
+            connectionId: userCp.connectionId || undefined,
+          };
+        });
+        set((state) => ({
+          symbols: [
+            ...state.symbols,
+            {
+              ...symbolData,
+              id: generateId(),
+              properties: mergedProperties,
+              connections: mergedConnections,
+            },
+          ],
+        }));
+      },
+      updateSymbol: (id, updates) => {
+        get()._pushToHistory();
+        set((state) => ({
+          symbols: state.symbols.map(symbol => {
+            if (symbol.id !== id) return symbol;
+            const catalogEntry = symbolCatalog.find((s) => s.type === (updates.type || symbol.type));
+            if (!catalogEntry) {
+              console.warn(`Symbol type '${updates.type || symbol.type}' not found in catalog. Updating as-is.`);
+              return { ...symbol, ...updates };
+            }
+            // Merge properties
+            const mergedProperties = { ...catalogEntry.defaultProperties, ...symbol.properties, ...updates.properties };
+            // Merge connections
+            const mergedConnections = (catalogEntry.defaultConnectionPoints || []).map((cp) => {
+              const userCp: Partial<ConnectionPoint> = ((updates.connections || symbol.connections) || []).find((c) => c.id === cp.id) || {};
+              return {
+                ...cp,
+                ...userCp,
+                connected: typeof userCp.connected === 'boolean' ? userCp.connected : false,
+                connectionId: userCp.connectionId || undefined,
+              };
+            });
+            return {
+              ...symbol,
+              ...updates,
+              properties: mergedProperties,
+              connections: mergedConnections,
+            };
+          }),
+        }));
+      },
       deleteSymbol: (id) => { get()._pushToHistory(); set((state) => ({ symbols: state.symbols.filter(symbol => symbol.id !== id), wires: state.wires.filter(wire => wire.startConnectionId !== id && wire.endConnectionId !== id), selectedElements: state.selectedElements.filter(elementId => elementId !== id) })); },
       moveSymbol: (id, position) => { get()._pushToHistory(); set((state) => ({ symbols: state.symbols.map(symbol => symbol.id === id ? { ...symbol, position } : symbol) })); },
       rotateSymbol: (id, rotation) => { get()._pushToHistory(); set((state) => ({ symbols: state.symbols.map(symbol => symbol.id === id ? { ...symbol, rotation } : symbol) })); },
       scaleSymbol: (id, scale) => { get()._pushToHistory(); set((state) => ({ symbols: state.symbols.map(symbol => symbol.id === id ? { ...symbol, scale } : symbol) })); },
 
       // Wire actions
-      addWire: (wireData) => { get()._pushToHistory(); set((state) => ({ wires: [...state.wires, { ...wireData, id: generateId() }] })); },
-      updateWire: (id, updates) => { get()._pushToHistory(); set((state) => ({ wires: state.wires.map(wire => wire.id === id ? { ...wire, ...updates } : wire) })); },
+      // Wire actions
+addWire: (wireData) => {
+  get()._pushToHistory();
+  const state = get();
+  // Validate endpoints
+  const validStartSymbol = wireData.startConnectionId
+    ? state.symbols.some(s => s.connections.some(c => c.id === wireData.startConnectionId))
+    : true;
+  const validEndSymbol = wireData.endConnectionId
+    ? state.symbols.some(s => s.connections.some(c => c.id === wireData.endConnectionId))
+    : true;
+  if (!validStartSymbol || !validEndSymbol) {
+    console.warn('Wire endpoints are invalid. Wire not added.', wireData);
+    return;
+  }
+  // Ensure wire properties are present
+  const defaultWireProps = { color: '#000000', thickness: 1, material: 'copper', insulation: 'PVC' };
+  const mergedProperties = { ...defaultWireProps, ...wireData.properties };
+  set((state) => ({
+    wires: [...state.wires, { ...wireData, id: generateId(), properties: mergedProperties }]
+  }));
+},
+updateWire: (id, updates) => {
+  get()._pushToHistory();
+  set((state) => ({
+    wires: state.wires.map(wire => {
+      if (wire.id !== id) return wire;
+      // Validate endpoints if being updated
+      let valid = true;
+      if (updates.startConnectionId) {
+        valid = state.symbols.some(s => s.connections.some(c => c.id === updates.startConnectionId));
+      }
+      if (updates.endConnectionId) {
+        valid = valid && state.symbols.some(s => s.connections.some(c => c.id === updates.endConnectionId));
+      }
+      if (!valid) {
+        console.warn('Wire endpoints are invalid. Wire not updated.', updates);
+        return wire;
+      }
+      // Ensure wire properties are present
+      const defaultWireProps = { color: '#000000', thickness: 1, material: 'copper', insulation: 'PVC' };
+      const mergedProperties = { ...defaultWireProps, ...wire.properties, ...updates.properties };
+      return { ...wire, ...updates, properties: mergedProperties };
+    })
+  }));
+},
       deleteWire: (id) => { get()._pushToHistory(); set((state) => ({ wires: state.wires.filter(wire => wire.id !== id), selectedElements: state.selectedElements.filter(elementId => elementId !== id) })); },
 
       // Selection actions (do not push to history)

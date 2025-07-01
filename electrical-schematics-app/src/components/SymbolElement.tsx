@@ -25,13 +25,28 @@ const SymbolElement: React.FC<SymbolElementProps> = ({
   onClick,
 }) => {
   const catalogEntry = symbolCatalog.find((s) => s.type === type);
-  if (!catalogEntry) return null;
+  if (!catalogEntry) {
+    console.warn(`Symbol type '${type}' not found in catalog.`);
+    // Render a red X as a placeholder for unknown symbol types
+    return (
+      <Group x={position.x} y={position.y} rotation={rotation} scaleX={scale} scaleY={scale} onClick={onClick}>
+        <Path data={'M0 0 L24 24 M24 0 L0 24'} stroke={'red'} strokeWidth={3} />
+      </Group>
+    );
+  }
 
   // Merge default and actual connection points
   const connectionPoints = catalogEntry.defaultConnectionPoints.map((cp, i) => {
     const actual = connections.find((c) => c.id === cp.id) || cp;
     return actual;
   });
+
+  // Validate SVG path (basic check)
+  let isPathValid = true;
+  if (!catalogEntry.svgPath || typeof catalogEntry.svgPath !== 'string' || catalogEntry.svgPath.trim() === '') {
+    isPathValid = false;
+    console.warn(`SVG path missing or invalid for symbol type '${type}'.`);
+  }
 
   return (
     <Group
@@ -42,13 +57,18 @@ const SymbolElement: React.FC<SymbolElementProps> = ({
       scaleY={scale}
       onClick={onClick}
     >
-      <Path
-        data={catalogEntry.svgPath}
-        stroke={selected ? '#1976d2' : '#222'}
-        strokeWidth={2}
-        lineCap="round"
-        lineJoin="round"
-      />
+      {isPathValid ? (
+        <Path
+          data={catalogEntry.svgPath}
+          stroke={selected ? '#1976d2' : '#222'}
+          strokeWidth={2}
+          lineCap="round"
+          lineJoin="round"
+        />
+      ) : (
+        // Render a red X as a placeholder for malformed SVGs
+        <Path data={'M0 0 L24 24 M24 0 L0 24'} stroke={'red'} strokeWidth={3} />
+      )}
       {connectionPoints.map((cp) => (
         <Circle
           key={cp.id}

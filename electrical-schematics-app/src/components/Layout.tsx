@@ -43,6 +43,9 @@ const Layout: React.FC<{ children?: React.ReactNode }> = ({ children }) => {
   const undo = useCanvasStore((s) => s.undo);
   const redo = useCanvasStore((s) => s.redo);
   const setPan = useCanvasStore((s) => s.setPan);
+  // Drag state for symbol drag-and-drop
+  const [draggedSymbolType, setDraggedSymbolType] = useState<SymbolType | null>(null);
+  const [dragPreviewPosition, setDragPreviewPosition] = useState<{ x: number; y: number } | null>(null);
 
   const handleDelete = () => {
     selectedElements.forEach((id) => {
@@ -110,7 +113,11 @@ const Layout: React.FC<{ children?: React.ReactNode }> = ({ children }) => {
             <InputBase sx={{ ml: 1, flex: 1 }} placeholder="Search symbols..." inputProps={{ 'aria-label': 'search symbols' }} />
           </Paper>
           <Divider sx={{ mb: 2 }} />
-          <SymbolLibrary />
+          <SymbolLibrary
+            draggedSymbolType={draggedSymbolType}
+            setDraggedSymbolType={setDraggedSymbolType}
+            setDragPreviewPosition={setDragPreviewPosition}
+          />
         </Box>
       </Drawer>
       {/* Main Area */}
@@ -145,6 +152,9 @@ const Layout: React.FC<{ children?: React.ReactNode }> = ({ children }) => {
               handToolActive={activeTool === 'hand'}
               showGrid={showGrid}
               snapToGrid={snapToGrid}
+              draggedSymbolType={draggedSymbolType}
+              dragPreviewPosition={dragPreviewPosition}
+              setDragPreviewPosition={setDragPreviewPosition}
             />
           </Box>
         </Box>

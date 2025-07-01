@@ -4,6 +4,7 @@ import useImage from 'use-image';
 import murielLogo from '../assets/muriel-logo.png';
 import { useCanvasStore } from '../store/canvasStore';
 import { SymbolType, WireType } from '../types';
+import { symbolCatalog } from '../symbols/catalog';
 
 // A3 size at 72dpi: 420mm x 297mm ~ 1050 x 742 px
 const PAPER_WIDTH = 1200;
@@ -43,16 +44,18 @@ const fieldDefs = [
   { key: 'pageTotal', label: 'Page Total', row: 2, col: 4, rowSpan: 1, colSpan: 1 },
 ];
 
-// Replace the current CanvasArea definition with the following:
 interface CanvasAreaProps {
   wireToolActive?: boolean;
   selectToolActive?: boolean;
   handToolActive?: boolean;
   showGrid?: boolean;
   snapToGrid?: boolean;
+  draggedSymbolType?: SymbolType | null;
+  dragPreviewPosition?: { x: number; y: number } | null;
+  setDragPreviewPosition?: (pos: { x: number; y: number } | null) => void;
 }
 
-const CanvasArea: React.FC<CanvasAreaProps> = ({ wireToolActive, selectToolActive, handToolActive, showGrid }) => {
+const CanvasArea: React.FC<CanvasAreaProps> = ({ wireToolActive, selectToolActive, handToolActive, showGrid, draggedSymbolType, dragPreviewPosition, setDragPreviewPosition }) => {
   const stageRef = useRef<any>(null);
   const [titleBlock, setTitleBlock] = useState(DEFAULT_TITLE_BLOCK);
   const [editingField, setEditingField] = useState<string | null>(null);
@@ -77,6 +80,9 @@ const CanvasArea: React.FC<CanvasAreaProps> = ({ wireToolActive, selectToolActiv
   const [lastPointer, setLastPointer] = useState<{ x: number; y: number } | null>(null);
   const [spacePressed, setSpacePressed] = useState(false);
   const [pendingPan, setPendingPan] = useState<{ x: number; y: number } | null>(null);
+
+  // Drop zone highlight state
+  const [isDragOver, setIsDragOver] = useState(false);
 
   // Handle drop from SymbolLibrary
   const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
@@ -110,10 +116,18 @@ const CanvasArea: React.FC<CanvasAreaProps> = ({ wireToolActive, selectToolActiv
       });
     }
     e.dataTransfer.clearData();
+    setIsDragOver(false);
+    if (setDragPreviewPosition) setDragPreviewPosition(null);
   };
 
   const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
+    if (!isDragOver) setIsDragOver(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
+    setIsDragOver(false);
+    if (setDragPreviewPosition) setDragPreviewPosition(null);
   };
 
   // Responsive scaling
@@ -604,8 +618,8 @@ const CanvasArea: React.FC<CanvasAreaProps> = ({ wireToolActive, selectToolActiv
   // Memoize event handlers
   const handleDropMemo = useCallback(handleDrop, []);
   const handleDragOverMemo = useCallback(handleDragOver, []);
-  const handleStageMouseDownMemo = useCallback(handleStageMouseDown, [wireToolActive, drawingWire, symbols]);
-  const handleStageMouseMoveMemo = useCallback(handleStageMouseMove, [wireToolActive, drawingWire, symbols]);
+  const handleStageMouseDownMemo = useCallback(handleStageMouseDown, [wireToolActive, drawingWire, symbols, handToolActive, spacePressed]);
+  const handleStageMouseMoveMemo = useCallback(handleStageMouseMove, [wireToolActive, drawingWire, symbols, handToolActive, spacePressed]);
 
   // Main render
   return (
@@ -620,7 +634,50 @@ const CanvasArea: React.FC<CanvasAreaProps> = ({ wireToolActive, selectToolActiv
       }}
       onDrop={handleDropMemo}
       onDragOver={handleDragOverMemo}
+      onDragLeave={handleDragLeave}
     >
+      {/* Drop zone highlight */}
+      {draggedSymbolType && (
+        <div
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            width: '100%',
+            height: '100%',
+            pointerEvents: 'none',
+            background: isDragOver ? 'rgba(25, 118, 210, 0.08)' : 'transparent',
+            border: isDragOver ? '2px dashed #1976d2' : '2px dashed transparent',
+            zIndex: 10,
+            transition: 'background 0.2s, border 0.2s',
+          }}
+        />
+      )}
+      {/* Symbol drag preview */}
+      {draggedSymbolType && dragPreviewPosition && (() => {
+        const entry = symbolCatalog.find(s => s.type === draggedSymbolType);
+        if (!entry) return null;
+        // Offset so cursor is in the center of the preview
+        const offset = 16;
+        return (
+          <svg
+            width={32}
+            height={32}
+            viewBox="0 0 24 24"
+            style={{
+              position: 'fixed',
+              left: dragPreviewPosition.x - offset,
+              top: dragPreviewPosition.y - offset,
+              pointerEvents: 'none',
+              zIndex: 1000,
+              opacity: 0.85,
+              filter: 'drop-shadow(0 2px 8px rgba(0,0,0,0.15))',
+            }}
+          >
+            <path d={entry.svgPath} stroke="#1976d2" strokeWidth={2} fill="none" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        );
+      })()}
       {/* Editable input overlay */}
       {editingField && inputPos && (
         <input

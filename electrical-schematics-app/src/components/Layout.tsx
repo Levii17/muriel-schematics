@@ -27,6 +27,7 @@ import PropertiesPanel from './PropertiesPanel';
 import { useCanvasStore } from '../store/canvasStore';
 import Tooltip from '@mui/material/Tooltip';
 import CenterFocusStrongIcon from '@mui/icons-material/CenterFocusStrong';
+import { SymbolType } from '../types';
 
 const drawerWidth = 260;
 

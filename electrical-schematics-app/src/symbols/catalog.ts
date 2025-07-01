@@ -1,5 +1,6 @@
 // Central catalog of SANS electrical symbols
 import { SymbolType, ConnectionPoint } from '../types';
+import { useState } from 'react';
 
 export interface SymbolCatalogEntry {
   type: SymbolType;
@@ -10,10 +11,11 @@ export interface SymbolCatalogEntry {
 }
 
 export const symbolCatalog: SymbolCatalogEntry[] = [
+  // Protection devices
   {
     type: SymbolType.CIRCUIT_BREAKER,
     name: 'Circuit Breaker (Double Pole)',
-    svgPath: 'M4 6 H20 M4 18 H20 M8 6 V18 M16 6 V18', // Simple representation
+    svgPath: 'M4 6 H20 M4 18 H20 M8 6 V18 M16 6 V18',
     defaultProperties: { label: 'CB', poles: 2 },
     defaultConnectionPoints: [
       { id: 'cp1', position: { x: 4, y: 6 }, type: 'input' },
@@ -68,6 +70,8 @@ export const symbolCatalog: SymbolCatalogEntry[] = [
       { id: 'cp2', position: { x: 16, y: 12 }, type: 'output' },
     ],
   },
+
+  // Power sources
   {
     type: SymbolType.BATTERY,
     name: 'Battery',
@@ -98,6 +102,8 @@ export const symbolCatalog: SymbolCatalogEntry[] = [
       { id: 'cp2', position: { x: 16, y: 16 }, type: 'output' },
     ],
   },
+
+  // More protection devices
   {
     type: SymbolType.FUSE,
     name: 'Fuse',
@@ -120,6 +126,8 @@ export const symbolCatalog: SymbolCatalogEntry[] = [
       { id: 'cp4', position: { x: 18, y: 18 }, type: 'output' },
     ],
   },
+
+  // Switches and controls
   {
     type: SymbolType.CONTACTOR,
     name: 'Contactor',
@@ -130,6 +138,8 @@ export const symbolCatalog: SymbolCatalogEntry[] = [
       { id: 'cp2', position: { x: 16, y: 12 }, type: 'output' },
     ],
   },
+
+  // Loads
   {
     type: SymbolType.LIGHT,
     name: 'Light',
@@ -170,6 +180,8 @@ export const symbolCatalog: SymbolCatalogEntry[] = [
       { id: 'cp2', position: { x: 16, y: 12 }, type: 'output' },
     ],
   },
+
+  // Measurement
   {
     type: SymbolType.AMMETER,
     name: 'Ammeter',
@@ -200,6 +212,8 @@ export const symbolCatalog: SymbolCatalogEntry[] = [
       { id: 'cp2', position: { x: 16, y: 12 }, type: 'output' },
     ],
   },
+
+  // Control and signaling
   {
     type: SymbolType.BELL,
     name: 'Bell',
@@ -230,6 +244,8 @@ export const symbolCatalog: SymbolCatalogEntry[] = [
       { id: 'cp2', position: { x: 12, y: 16 }, type: 'output' },
     ],
   },
+
+  // Grounding and bonding
   {
     type: SymbolType.EARTH,
     name: 'Earth',
@@ -250,6 +266,8 @@ export const symbolCatalog: SymbolCatalogEntry[] = [
       { id: 'cp2', position: { x: 12, y: 18 }, type: 'output' },
     ],
   },
+
+  // Junction boxes and panels
   {
     type: SymbolType.JUNCTION_BOX,
     name: 'Junction Box',
@@ -270,6 +288,7 @@ export const symbolCatalog: SymbolCatalogEntry[] = [
       { id: 'cp2', position: { x: 16, y: 12 }, type: 'output' },
     ],
   },
+
   // Placeholder for custom/user-defined symbols
   {
     type: SymbolType.CUSTOM,
@@ -281,4 +300,4 @@ export const symbolCatalog: SymbolCatalogEntry[] = [
       { id: 'cp2', position: { x: 18, y: 12 }, type: 'output' },
     ],
   },
-]; 
+];

@@ -30,6 +30,7 @@ const PropertiesPanel: React.FC = React.memo(() => {
   const updateWire = useCanvasStore((s) => s.updateWire);
   const undo = useCanvasStore((s) => s.undo);
   const redo = useCanvasStore((s) => s.redo);
+  const clearSelection = useCanvasStore((s) => s.clearSelection);
 
   // Find selected items
   const selectedSymbols = useMemo(() => symbols.filter(s => selectedElements.includes(s.id)), [symbols, selectedElements]);
@@ -64,6 +65,14 @@ const PropertiesPanel: React.FC = React.memo(() => {
       } else {
         updateWire(item.id, { properties: getWireProperties() });
       }
+    };
+    const handleApply = () => {
+      if (isSymbol) {
+        updateSymbol(item.id, { properties: { ...item.properties } });
+      } else {
+        updateWire(item.id, { properties: getWireProperties({ ...item.properties }) });
+      }
+      clearSelection();
     };
     // Validation for thickness
     const thickness = item.properties?.thickness || 1;
@@ -133,8 +142,11 @@ const PropertiesPanel: React.FC = React.memo(() => {
             onChange={e => handleChange('rating', e.target.value)}
           />
         </Box>
-        <Button variant="outlined" size="small" color="secondary" sx={{ mt: 1 }} onClick={handleReset}>
+        <Button variant="outlined" size="small" color="secondary" sx={{ mt: 1, mr: 1 }} onClick={handleReset}>
           Reset to Default
+        </Button>
+        <Button variant="contained" size="small" color="primary" sx={{ mt: 1 }} onClick={handleApply}>
+          Apply
         </Button>
       </Box>
     );

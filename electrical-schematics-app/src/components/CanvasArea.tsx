@@ -55,7 +55,7 @@ interface CanvasAreaProps {
   setDragPreviewPosition?: (pos: { x: number; y: number } | null) => void;
 }
 
-const CanvasArea: React.FC<CanvasAreaProps> = ({ wireToolActive, selectToolActive, handToolActive, showGrid, draggedSymbolType, dragPreviewPosition, setDragPreviewPosition }) => {
+const CanvasArea: React.FC<CanvasAreaProps> = ({ wireToolActive, selectToolActive, handToolActive, showGrid, snapToGrid, draggedSymbolType, dragPreviewPosition, setDragPreviewPosition }) => {
   const stageRef = useRef<any>(null);
   const [titleBlock, setTitleBlock] = useState(DEFAULT_TITLE_BLOCK);
   const [editingField, setEditingField] = useState<string | null>(null);
@@ -98,8 +98,14 @@ const CanvasArea: React.FC<CanvasAreaProps> = ({ wireToolActive, selectToolActiv
       const target = e.target as HTMLElement;
       boundingRect = target.getBoundingClientRect ? target.getBoundingClientRect() : { left: 0, top: 0 };
     }
-    const x = e.clientX - boundingRect.left;
-    const y = e.clientY - boundingRect.top;
+    let x = e.clientX - boundingRect.left;
+    let y = e.clientY - boundingRect.top;
+    // Snap to grid if enabled
+    if (snapToGrid) {
+      const grid = useCanvasStore.getState().gridSize || GRID_SPACING;
+      x = Math.round(x / grid) * grid;
+      y = Math.round(y / grid) * grid;
+    }
     if (
       x > BORDER_THICKNESS &&
       y > BORDER_THICKNESS &&
@@ -311,7 +317,14 @@ const CanvasArea: React.FC<CanvasAreaProps> = ({ wireToolActive, selectToolActiv
         onClick={() => handleSymbolClick(symbol.id)}
         onTap={() => handleSymbolClick(symbol.id)}
         onDragEnd={handToolActive ? e => {
-          moveSymbol(symbol.id, { x: e.target.x(), y: e.target.y() });
+          let x = e.target.x();
+          let y = e.target.y();
+          if (snapToGrid) {
+            const grid = useCanvasStore.getState().gridSize || GRID_SPACING;
+            x = Math.round(x / grid) * grid;
+            y = Math.round(y / grid) * grid;
+          }
+          moveSymbol(symbol.id, { x, y });
         } : undefined}
       >
         <Rect

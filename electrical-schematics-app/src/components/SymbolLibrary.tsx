@@ -11,6 +11,7 @@ interface SymbolLibraryProps {
   draggedSymbolType: SymbolType | null;
   setDraggedSymbolType: (type: SymbolType | null) => void;
   setDragPreviewPosition: (pos: { x: number; y: number } | null) => void;
+  search?: string;
 }
 
 const SymbolSVG: React.FC<{ svgPath: string }> = ({ svgPath }) => (
@@ -23,6 +24,7 @@ const SymbolLibrary: React.FC<SymbolLibraryProps> = ({
   draggedSymbolType,
   setDraggedSymbolType,
   setDragPreviewPosition,
+  search = '',
 }) => {
   useEffect(() => {
     if (!draggedSymbolType) return;
@@ -35,6 +37,12 @@ const SymbolLibrary: React.FC<SymbolLibraryProps> = ({
       setDragPreviewPosition(null);
     };
   }, [draggedSymbolType, setDragPreviewPosition]);
+
+  const searchLower = search.trim().toLowerCase();
+  const filteredCatalog = symbolCatalog.filter(entry =>
+    entry.name.toLowerCase().includes(searchLower) ||
+    entry.type.toLowerCase().includes(searchLower)
+  );
 
   const handleDragStart = (e: React.DragEvent, symbolType: SymbolType) => {
     if (draggedSymbolType) {
@@ -55,7 +63,7 @@ const SymbolLibrary: React.FC<SymbolLibraryProps> = ({
   return (
     <Paper elevation={1} sx={{ p: 1 }}>
       <List dense>
-        {symbolCatalog.map((entry) => (
+        {filteredCatalog.map((entry) => (
           <ListItemButton
             key={entry.type + entry.name}
             draggable={!draggedSymbolType || draggedSymbolType === entry.type}

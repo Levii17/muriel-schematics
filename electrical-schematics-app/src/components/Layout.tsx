@@ -47,6 +47,8 @@ const Layout: React.FC<{ children?: React.ReactNode }> = ({ children }) => {
   // Drag state for symbol drag-and-drop
   const [draggedSymbolType, setDraggedSymbolType] = useState<SymbolType | null>(null);
   const [dragPreviewPosition, setDragPreviewPosition] = useState<{ x: number; y: number } | null>(null);
+  // Symbol library search state
+  const [symbolSearch, setSymbolSearch] = useState('');
 
   const handleDelete = () => {
     selectedElements.forEach((id) => {
@@ -110,14 +112,22 @@ const Layout: React.FC<{ children?: React.ReactNode }> = ({ children }) => {
             component="form"
             sx={{ p: '2px 4px', display: 'flex', alignItems: 'center', mb: 2 }}
             elevation={0}
+            onSubmit={e => e.preventDefault()}
           >
-            <InputBase sx={{ ml: 1, flex: 1 }} placeholder="Search symbols..." inputProps={{ 'aria-label': 'search symbols' }} />
+            <InputBase
+              sx={{ ml: 1, flex: 1 }}
+              placeholder="Search symbols..."
+              inputProps={{ 'aria-label': 'search symbols' }}
+              value={symbolSearch}
+              onChange={e => setSymbolSearch(e.target.value)}
+            />
           </Paper>
           <Divider sx={{ mb: 2 }} />
           <SymbolLibrary
             draggedSymbolType={draggedSymbolType}
             setDraggedSymbolType={setDraggedSymbolType}
             setDragPreviewPosition={setDragPreviewPosition}
+            search={symbolSearch}
           />
         </Box>
       </Drawer>

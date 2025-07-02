@@ -4,6 +4,7 @@ import ListItemButton from '@mui/material/ListItemButton';
 import ListItemIcon from '@mui/material/ListItemIcon';
 import ListItemText from '@mui/material/ListItemText';
 import Paper from '@mui/material/Paper';
+import ListSubheader from '@mui/material/ListSubheader';
 import { symbolCatalog } from '../symbols/catalog';
 import { SymbolType } from '../types';
 
@@ -44,6 +45,14 @@ const SymbolLibrary: React.FC<SymbolLibraryProps> = ({
     entry.type.toLowerCase().includes(searchLower)
   );
 
+  // Group filtered symbols by category
+  const symbolsByCategory: { [category: string]: typeof filteredCatalog } = {};
+  filteredCatalog.forEach(entry => {
+    if (!symbolsByCategory[entry.category]) symbolsByCategory[entry.category] = [];
+    symbolsByCategory[entry.category].push(entry);
+  });
+  const sortedCategories = Object.keys(symbolsByCategory).sort();
+
   const handleDragStart = (e: React.DragEvent, symbolType: SymbolType) => {
     if (draggedSymbolType) {
       e.preventDefault();
@@ -63,23 +72,31 @@ const SymbolLibrary: React.FC<SymbolLibraryProps> = ({
   return (
     <Paper elevation={1} sx={{ p: 1 }}>
       <List dense>
-        {filteredCatalog.map((entry) => (
-          <ListItemButton
-            key={entry.type + entry.name}
-            draggable={!draggedSymbolType || draggedSymbolType === entry.type}
-            onDragStart={(e) => handleDragStart(e, entry.type)}
-            onDragEnd={handleDragEnd}
-            sx={{
-              cursor: draggedSymbolType === entry.type ? 'grabbing' : 'grab',
-              userSelect: 'none',
-              opacity: draggedSymbolType && draggedSymbolType !== entry.type ? 0.5 : 1,
-            }}
-          >
-            <ListItemIcon>
-              <SymbolSVG svgPath={entry.svgPath} />
-            </ListItemIcon>
-            <ListItemText primary={entry.name} />
-          </ListItemButton>
+        {sortedCategories.length === 0 && (
+          <ListSubheader>No symbols found.</ListSubheader>
+        )}
+        {sortedCategories.map(category => (
+          <React.Fragment key={category}>
+            <ListSubheader>{category}</ListSubheader>
+            {symbolsByCategory[category].map((entry) => (
+              <ListItemButton
+                key={entry.type + entry.name}
+                draggable={!draggedSymbolType || draggedSymbolType === entry.type}
+                onDragStart={(e) => handleDragStart(e, entry.type)}
+                onDragEnd={handleDragEnd}
+                sx={{
+                  cursor: draggedSymbolType === entry.type ? 'grabbing' : 'grab',
+                  userSelect: 'none',
+                  opacity: draggedSymbolType && draggedSymbolType !== entry.type ? 0.5 : 1,
+                }}
+              >
+                <ListItemIcon>
+                  <SymbolSVG svgPath={entry.svgPath} />
+                </ListItemIcon>
+                <ListItemText primary={entry.name} />
+              </ListItemButton>
+            ))}
+          </React.Fragment>
         ))}
       </List>
     </Paper>

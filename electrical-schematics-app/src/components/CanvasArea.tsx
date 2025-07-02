@@ -672,23 +672,52 @@ const CanvasArea: React.FC<CanvasAreaProps> = ({ wireToolActive, selectToolActiv
         if (!entry) return null;
         // Offset so cursor is in the center of the preview
         const offset = 16;
+        // Snap preview position to grid if enabled
+        let snapX = dragPreviewPosition.x;
+        let snapY = dragPreviewPosition.y;
+        if (snapToGrid) {
+          const grid = useCanvasStore.getState().gridSize || GRID_SPACING;
+          snapX = Math.round(snapX / grid) * grid;
+          snapY = Math.round(snapY / grid) * grid;
+        }
         return (
-          <svg
-            width={32}
-            height={32}
-            viewBox="0 0 24 24"
-            style={{
-              position: 'fixed',
-              left: dragPreviewPosition.x - offset,
-              top: dragPreviewPosition.y - offset,
-              pointerEvents: 'none',
-              zIndex: 1000,
-              opacity: 0.85,
-              filter: 'drop-shadow(0 2px 8px rgba(0,0,0,0.15))',
-            }}
-          >
-            <path d={entry.svgPath} stroke="#1976d2" strokeWidth={2} fill="none" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
+          <>
+            {/* Snap-to-grid highlight */}
+            {snapToGrid && (
+              <div
+                style={{
+                  position: 'fixed',
+                  left: snapX - 20,
+                  top: snapY - 20,
+                  width: 40,
+                  height: 40,
+                  background: '#1976d2',
+                  opacity: 0.12,
+                  borderRadius: 8,
+                  pointerEvents: 'none',
+                  zIndex: 999,
+                  boxShadow: '0 0 0 2px #1976d2',
+                  transition: 'left 0.05s, top 0.05s',
+                }}
+              />
+            )}
+            <svg
+              width={32}
+              height={32}
+              viewBox="0 0 24 24"
+              style={{
+                position: 'fixed',
+                left: snapX - offset,
+                top: snapY - offset,
+                pointerEvents: 'none',
+                zIndex: 1000,
+                opacity: 0.85,
+                filter: 'drop-shadow(0 2px 8px rgba(0,0,0,0.15))',
+              }}
+            >
+              <path d={entry.svgPath} stroke="#1976d2" strokeWidth={2} fill="none" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </>
         );
       })()}
       {/* Editable input overlay */}

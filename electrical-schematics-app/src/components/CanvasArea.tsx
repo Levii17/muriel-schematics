@@ -524,13 +524,28 @@ const CanvasArea: React.FC<CanvasAreaProps> = ({ wireToolActive, selectToolActiv
         pointer.x < PAPER_WIDTH - BORDER_THICKNESS &&
         pointer.y < PAPER_HEIGHT - BORDER_THICKNESS - TITLE_BLOCK_HEIGHT
       ) {
-        const snap = getNearestSymbolCenter(pointer) || pointer;
+        let snap = getNearestSymbolCenter(pointer) || pointer;
+        if (snapToGrid) {
+          const grid = useCanvasStore.getState().gridSize || GRID_SPACING;
+          snap = {
+            x: Math.round(snap.x / grid) * grid,
+            y: Math.round(snap.y / grid) * grid,
+          };
+        }
         if (!drawingWire.start) {
           setDrawingWire({ start: snap, mouse: snap });
         } else {
           // Finish wire
+          let startPoint = drawingWire.start;
+          if (snapToGrid) {
+            const grid = useCanvasStore.getState().gridSize || GRID_SPACING;
+            startPoint = {
+              x: Math.round(startPoint.x / grid) * grid,
+              y: Math.round(startPoint.y / grid) * grid,
+            };
+          }
           addWire({
-            startPoint: drawingWire.start,
+            startPoint,
             endPoint: snap,
             wireType: WireType.CONTROL,
             properties: {
@@ -575,7 +590,14 @@ const CanvasArea: React.FC<CanvasAreaProps> = ({ wireToolActive, selectToolActiv
     if (!wireToolActive) return;
     if (!drawingWire.start) return;
     if (!pointer) return;
-    const snap = getNearestSymbolCenter(pointer) || pointer;
+    let snap = getNearestSymbolCenter(pointer) || pointer;
+    if (snapToGrid) {
+      const grid = useCanvasStore.getState().gridSize || GRID_SPACING;
+      snap = {
+        x: Math.round(snap.x / grid) * grid,
+        y: Math.round(snap.y / grid) * grid,
+      };
+    }
     setDrawingWire((dw) => ({ ...dw, mouse: snap }));
   }, [pendingPan, isPanning, lastPointer, pan, setPan, wireToolActive]);
 
@@ -768,9 +790,25 @@ const CanvasArea: React.FC<CanvasAreaProps> = ({ wireToolActive, selectToolActiv
           />
           {/* Grid */}
           {showGrid !== false && gridLines}
-          {/* Render wires behind symbols */}
+          {/* Title Block */}
+          <Group>
+            <Rect
+              x={PAPER_WIDTH - BORDER_THICKNESS - TITLE_BLOCK_WIDTH}
+              y={PAPER_HEIGHT - BORDER_THICKNESS - TITLE_BLOCK_HEIGHT}
+              width={TITLE_BLOCK_WIDTH}
+              height={TITLE_BLOCK_HEIGHT}
+              fill="#fff"
+              stroke="#111"
+              strokeWidth={2}
+            />
+            {titleBlockGridMemo}
+            {titleBlockFieldsMemo}
+          </Group>
+          {/* Render symbols */}
+          {symbolsMemo}
+          {/* Render wires above symbols */}
           {wiresMemo}
-          {/* Preview wire while drawing */}
+          {/* Preview wire while drawing above symbols */}
           {wireToolActive && drawingWire.start && drawingWire.mouse && (
             <>
               <Line
@@ -813,22 +851,6 @@ const CanvasArea: React.FC<CanvasAreaProps> = ({ wireToolActive, selectToolActiv
               listening={false}
             />
           )}
-          {/* Title Block */}
-          <Group>
-            <Rect
-              x={PAPER_WIDTH - BORDER_THICKNESS - TITLE_BLOCK_WIDTH}
-              y={PAPER_HEIGHT - BORDER_THICKNESS - TITLE_BLOCK_HEIGHT}
-              width={TITLE_BLOCK_WIDTH}
-              height={TITLE_BLOCK_HEIGHT}
-              fill="#fff"
-              stroke="#111"
-              strokeWidth={2}
-            />
-            {titleBlockGridMemo}
-            {titleBlockFieldsMemo}
-          </Group>
-          {/* Render symbols */}
-          {symbolsMemo}
         </Layer>
       </Stage>
     </div>

@@ -41,7 +41,59 @@ const SymbolElement: React.FC<SymbolElementProps> = ({
     return actual;
   });
 
-  // Validate SVG path (basic check)
+  // --- New: Support custom renderer ---
+  if (catalogEntry.renderer) {
+    const CustomRenderer = catalogEntry.renderer;
+    return (
+      <Group x={position.x} y={position.y} rotation={rotation} scaleX={scale} scaleY={scale} onClick={onClick}>
+        <CustomRenderer selected={selected} properties={properties} />
+        {connectionPoints.map((cp) => (
+          <Circle
+            key={cp.id}
+            x={cp.position.x}
+            y={cp.position.y}
+            radius={4}
+            fill="#fff"
+            stroke="#43a047"
+            strokeWidth={2}
+          />
+        ))}
+      </Group>
+    );
+  }
+
+  // --- SVG-based rendering ---
+  // Prefer paths array if present
+  if (catalogEntry.paths && Array.isArray(catalogEntry.paths)) {
+    return (
+      <Group x={position.x} y={position.y} rotation={rotation} scaleX={scale} scaleY={scale} onClick={onClick}>
+        {catalogEntry.paths.map((p, i) => (
+          <Path
+            key={i}
+            data={p.d}
+            stroke={p.stroke || (selected ? '#1976d2' : '#222')}
+            strokeWidth={p.strokeWidth || 2}
+            fill={p.fill || 'none'}
+            lineCap="round"
+            lineJoin="round"
+          />
+        ))}
+        {connectionPoints.map((cp) => (
+          <Circle
+            key={cp.id}
+            x={cp.position.x}
+            y={cp.position.y}
+            radius={4}
+            fill="#fff"
+            stroke="#43a047"
+            strokeWidth={2}
+          />
+        ))}
+      </Group>
+    );
+  }
+
+  // Legacy svgPath support
   let isPathValid = true;
   if (!catalogEntry.svgPath || typeof catalogEntry.svgPath !== 'string' || catalogEntry.svgPath.trim() === '') {
     isPathValid = false;

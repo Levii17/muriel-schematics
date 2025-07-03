@@ -97,7 +97,26 @@ export enum SymbolType {
   DISTRIBUTION_BOARD = 'distribution_board',
   
   // Custom symbols
-  CUSTOM = 'custom'
+  CUSTOM = 'custom',
+
+  // --- New symbols from reference images ---
+  PHASE_L1 = 'phase_l1', // L1
+  PHASE_L2 = 'phase_l2', // L2
+  PHASE_L3 = 'phase_l3', // L3
+  PHASE_NEUTRAL = 'phase_neutral', // N
+  ENERGY_METER = 'energy_meter', // kWh
+  AC = 'ac', // Alternating current
+  THREE_PHASE = 'three_phase',
+  CONNECTIONS_SUPPLY = 'connections_supply',
+  CONDUCTOR = 'conductor',
+  CONDUCTOR_CROSS_CONNECTED = 'conductor_cross_connected',
+  CONDUCTOR_CROSS_NOT_CONNECTED = 'conductor_cross_not_connected',
+  CIRCUIT_MAIN = 'circuit_main',
+  CIRCUIT_CONTROL = 'circuit_control',
+  LAMP_INCANDESCENT = 'lamp_incandescent',
+  LAMP_INDICATION = 'lamp_indication',
+  RESISTOR = 'resistor',
+  CAPACITOR = 'capacitor',
 }
 
 export enum WireType {

@@ -15,9 +15,24 @@ interface SymbolLibraryProps {
   search?: string;
 }
 
-const SymbolSVG: React.FC<{ svgPath: string }> = ({ svgPath }) => (
-  <svg width={32} height={32} viewBox="0 0 24 24" style={{ display: 'block' }}>
-    <path d={svgPath} stroke="#222" strokeWidth={1.5} fill="none" strokeLinecap="round" strokeLinejoin="round" />
+const SymbolSVG: React.FC<{ paths?: { d: string; stroke?: string; strokeWidth?: number; fill?: string }[]; viewBox?: string }> = ({ paths, viewBox = "0 0 24 24" }) => (
+  <svg width={32} height={32} viewBox={viewBox} style={{ display: 'block' }}>
+    {paths && paths.length > 0 ? (
+      paths.map((p, i) => (
+        <path
+          key={i}
+          d={p.d}
+          stroke={p.stroke || "#222"}
+          strokeWidth={p.strokeWidth ?? 1.5}
+          fill={p.fill || "none"}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      ))
+    ) : (
+      // Fallback: render an X if no paths
+      <path d="M4 4 L20 20 M20 4 L4 20" stroke="red" strokeWidth={2} />
+    )}
   </svg>
 );
 
@@ -91,7 +106,7 @@ const SymbolLibrary: React.FC<SymbolLibraryProps> = ({
                 }}
               >
                 <ListItemIcon>
-                  <SymbolSVG svgPath={entry.svgPath} />
+                  <SymbolSVG paths={entry.paths} viewBox={entry.viewBox || '0 0 24 24'} />
                 </ListItemIcon>
                 <ListItemText primary={entry.name} />
               </ListItemButton>

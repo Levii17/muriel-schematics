@@ -421,7 +421,7 @@ const CanvasArea: React.FC<CanvasAreaProps> = ({ wireToolActive, selectToolActiv
   };
 
   // Find nearest symbol center to a point
-  const getNearestSymbolCenter = (point: { x: number; y: number }) => {
+  const getNearestSymbolCenter = useCallback((point: { x: number; y: number }) => {
     let minDist = Infinity;
     let nearest = null;
     symbols.forEach((symbol) => {
@@ -436,7 +436,7 @@ const CanvasArea: React.FC<CanvasAreaProps> = ({ wireToolActive, selectToolActiv
       }
     });
     return nearest;
-  };
+  }, [symbols]);
 
   // ESC to cancel wire drawing
   useEffect(() => {
@@ -491,9 +491,9 @@ const CanvasArea: React.FC<CanvasAreaProps> = ({ wireToolActive, selectToolActiv
   }, []);
 
   // Pan with hand tool, spacebar, or middle mouse only
-  const shouldStartPan = (e: any) => {
+  const shouldStartPan = useCallback((e: any) => {
     return handToolActive || spacePressed || e.evt.button === 1;
-  };
+  }, [handToolActive, spacePressed]);
 
   const handleStageMouseDown = useCallback((e: any) => {
     // If wire tool is active, always process wire drawing logic first
@@ -551,7 +551,7 @@ const CanvasArea: React.FC<CanvasAreaProps> = ({ wireToolActive, selectToolActiv
       setLastPointer(pointer);
       return;
     }
-  }, [wireToolActive, drawingWire, addWire, setDrawingWire, getNearestSymbolCenter, shouldStartPan, setPendingPan, setLastPointer]);
+  }, [wireToolActive, drawingWire, addWire, setDrawingWire, getNearestSymbolCenter, shouldStartPan, setPendingPan, setLastPointer, snapToGrid]);
 
   const handleStageMouseMove = useCallback((e: any) => {
     const pointer = e.target.getStage().getPointerPosition();
@@ -583,7 +583,7 @@ const CanvasArea: React.FC<CanvasAreaProps> = ({ wireToolActive, selectToolActiv
       };
     }
     setDrawingWire((dw) => ({ ...dw, mouse: snap }));
-  }, [pendingPan, isPanning, lastPointer, pan, setPan, wireToolActive]);
+  }, [pendingPan, isPanning, lastPointer, pan, setPan, wireToolActive, snapToGrid, drawingWire.start, getNearestSymbolCenter]);
 
   const handleStageMouseUp = useCallback((e?: any) => {
     if (pendingPan) {
@@ -626,7 +626,7 @@ const CanvasArea: React.FC<CanvasAreaProps> = ({ wireToolActive, selectToolActiv
   }, [setZoom, setPan]);
 
   // Memoize grid lines
-  const gridLines = useMemo(() => renderGrid(), [symbols.length, wires.length]);
+  const gridLines = useMemo(() => renderGrid(), []);
   // Memoize wires
   const wiresMemo = useMemo(() => renderWires(), [wires, selectedElements, selectToolActive, handToolActive]);
   // Memoize symbols
@@ -635,10 +635,10 @@ const CanvasArea: React.FC<CanvasAreaProps> = ({ wireToolActive, selectToolActiv
   const titleBlockGridMemo = useMemo(() => renderTitleBlockGrid(), []);
   const titleBlockFieldsMemo = useMemo(() => renderTitleBlockFields(), [titleBlock, logoImage]);
   // Memoize event handlers
-  const handleDropMemo = useCallback(handleDrop, []);
-  const handleDragOverMemo = useCallback(handleDragOver, []);
-  const handleStageMouseDownMemo = useCallback(handleStageMouseDown, [wireToolActive, drawingWire, symbols, handToolActive, spacePressed]);
-  const handleStageMouseMoveMemo = useCallback(handleStageMouseMove, [wireToolActive, drawingWire, symbols, handToolActive, spacePressed]);
+  const handleDropMemo = useCallback(handleDrop, [snapToGrid, addSymbol, setDragPreviewPosition]);
+  const handleDragOverMemo = useCallback(handleDragOver, [isDragOver]);
+  const handleStageMouseDownMemo = useCallback(handleStageMouseDown, [wireToolActive, drawingWire, addWire, setDrawingWire, getNearestSymbolCenter, shouldStartPan, setPendingPan, setLastPointer, snapToGrid]);
+  const handleStageMouseMoveMemo = useCallback(handleStageMouseMove, [pendingPan, isPanning, lastPointer, pan, setPan, wireToolActive, snapToGrid, drawingWire.start, getNearestSymbolCenter]);
 
   // Main render
   return (

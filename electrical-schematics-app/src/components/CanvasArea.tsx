@@ -5,6 +5,7 @@ import murielLogo from '../assets/muriel-logo.png';
 import { useCanvasStore } from '../store/canvasStore';
 import { SymbolType, WireType } from '../types';
 import { symbolCatalog } from '../symbols/catalog';
+import SymbolElement from './SymbolElement';
 
 // A3 size at 72dpi: 420mm x 297mm ~ 1050 x 742 px
 const PAPER_WIDTH = 1200;
@@ -309,42 +310,17 @@ const CanvasArea: React.FC<CanvasAreaProps> = ({ wireToolActive, selectToolActiv
 
   const renderSymbols = () =>
     symbols.map((symbol) => (
-      <Group
+      <SymbolElement
         key={symbol.id}
-        x={symbol.position.x}
-        y={symbol.position.y}
-        draggable={!!handToolActive}
+        type={symbol.type}
+        position={symbol.position}
+        rotation={symbol.rotation}
+        scale={symbol.scale}
+        selected={selectedElements.includes(symbol.id)}
+        properties={symbol.properties}
+        connections={symbol.connections}
         onClick={() => handleSymbolClick(symbol.id)}
-        onTap={() => handleSymbolClick(symbol.id)}
-        onDragEnd={handToolActive ? e => {
-          let x = e.target.x();
-          let y = e.target.y();
-          if (snapToGrid) {
-            const grid = useCanvasStore.getState().gridSize || GRID_SPACING;
-            x = Math.round(x / grid) * grid;
-            y = Math.round(y / grid) * grid;
-          }
-          moveSymbol(symbol.id, { x, y });
-        } : undefined}
-      >
-        <Rect
-          width={40}
-          height={40}
-          fill="#fff"
-          stroke={selectedElements.includes(symbol.id) ? '#1976d2' : '#333'}
-          strokeWidth={selectedElements.includes(symbol.id) ? 4 : 2}
-          cornerRadius={8}
-        />
-        <Text
-          text={symbol.type}
-          fontSize={12}
-          fill="#222"
-          width={40}
-          height={40}
-          align="center"
-          verticalAlign="middle"
-        />
-      </Group>
+      />
     ));
 
   // Draw title block grid lines

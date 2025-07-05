@@ -1,418 +1,20 @@
 // Central catalog of SANS electrical symbols
 import { SymbolType, ConnectionPoint } from '../types';
-import { useState } from 'react';
 
 export interface SymbolCatalogEntry {
   type: SymbolType;
   name: string;
   category: string;
-  // SVG-based rendering (data-driven)
   viewBox?: string;
   paths?: { d: string; stroke?: string; strokeWidth?: number; fill?: string }[];
-  // Legacy support
   svgPath?: string;
-  // Custom React renderer (for complex symbols)
   renderer?: React.FC<any>;
   defaultProperties: Record<string, any>;
   defaultConnectionPoints: Omit<ConnectionPoint, 'connected' | 'connectionId'>[];
 }
 
 export const symbolCatalog: SymbolCatalogEntry[] = [
-  // Protection devices
-  {
-    type: SymbolType.CIRCUIT_BREAKER,
-    name: 'Circuit Breaker (Double Pole)',
-    category: 'Protection Devices',
-    viewBox: '0 0 24 24',
-    paths: [
-      { d: 'M4 6 H20 M4 18 H20 M8 6 V18 M16 6 V18', stroke: 'black', strokeWidth: 2, fill: 'none' }
-    ],
-    defaultProperties: { label: 'CB', poles: 2 },
-    defaultConnectionPoints: [
-      { id: 'cp1', position: { x: 4, y: 6 }, type: 'input' },
-      { id: 'cp2', position: { x: 20, y: 6 }, type: 'output' },
-      { id: 'cp3', position: { x: 4, y: 18 }, type: 'input' },
-      { id: 'cp4', position: { x: 20, y: 18 }, type: 'output' },
-    ],
-  },
-  {
-    type: SymbolType.CIRCUIT_BREAKER,
-    name: 'Circuit Breaker (Triple Pole)',
-    category: 'Protection Devices',
-    viewBox: '0 0 24 24',
-    paths: [
-      { d: 'M4 6 H20 M4 12 H20 M4 18 H20 M7 6 V18 M13 6 V18 M19 6 V18', stroke: 'black', strokeWidth: 2, fill: 'none' }
-    ],
-    defaultProperties: { label: 'CB', poles: 3 },
-    defaultConnectionPoints: [
-      { id: 'cp1', position: { x: 4, y: 6 }, type: 'input' },
-      { id: 'cp2', position: { x: 20, y: 6 }, type: 'output' },
-      { id: 'cp3', position: { x: 4, y: 12 }, type: 'input' },
-      { id: 'cp4', position: { x: 20, y: 12 }, type: 'output' },
-      { id: 'cp5', position: { x: 4, y: 18 }, type: 'input' },
-      { id: 'cp6', position: { x: 20, y: 18 }, type: 'output' },
-    ],
-  },
-  {
-    type: SymbolType.SWITCH,
-    name: 'Isolator (Double Pole)',
-    category: 'Switches and Controls',
-    viewBox: '0 0 24 24',
-    paths: [
-      { d: 'M4 6 H20 M4 18 H20 M8 6 L12 18 M16 6 L12 18', stroke: 'black', strokeWidth: 2, fill: 'none' }
-    ],
-    defaultProperties: { label: 'ISOL', poles: 2 },
-    defaultConnectionPoints: [
-      { id: 'cp1', position: { x: 4, y: 6 }, type: 'input' },
-      { id: 'cp2', position: { x: 20, y: 6 }, type: 'output' },
-      { id: 'cp3', position: { x: 4, y: 18 }, type: 'input' },
-      { id: 'cp4', position: { x: 20, y: 18 }, type: 'output' },
-    ],
-  },
-  {
-    type: SymbolType.PUSH_BUTTON,
-    name: 'Push Button (Start)',
-    category: 'Switches and Controls',
-    viewBox: '0 0 24 24',
-    paths: [
-      { d: 'M12 4 V20 M8 12 H16', stroke: 'black', strokeWidth: 2, fill: 'none' }
-    ],
-    defaultProperties: { label: 'START' },
-    defaultConnectionPoints: [
-      { id: 'cp1', position: { x: 12, y: 4 }, type: 'input' },
-      { id: 'cp2', position: { x: 12, y: 20 }, type: 'output' },
-    ],
-  },
-  {
-    type: SymbolType.RELAY,
-    name: 'Coil (Contactor)',
-    category: 'Switches and Controls',
-    viewBox: '0 0 24 24',
-    paths: [
-      { d: 'M8 8 Q12 16 16 8 M8 16 Q12 8 16 16', stroke: 'black', strokeWidth: 2, fill: 'none' }
-    ],
-    defaultProperties: { label: 'K', type: 'contactor' },
-    defaultConnectionPoints: [
-      { id: 'cp1', position: { x: 8, y: 12 }, type: 'input' },
-      { id: 'cp2', position: { x: 16, y: 12 }, type: 'output' },
-    ],
-  },
-
-  // Power sources
-  {
-    type: SymbolType.BATTERY,
-    name: 'Battery',
-    category: 'Power Sources',
-    viewBox: '0 0 24 24',
-    paths: [
-      { d: 'M6 8 H18 M8 6 V18 M16 6 V18', stroke: 'black', strokeWidth: 2, fill: 'none' }
-    ],
-    defaultProperties: { label: 'BAT' },
-    defaultConnectionPoints: [
-      { id: 'cp1', position: { x: 6, y: 13 }, type: 'input' },
-      { id: 'cp2', position: { x: 18, y: 13 }, type: 'output' },
-    ],
-  },
-  {
-    type: SymbolType.GENERATOR,
-    name: 'Generator',
-    category: 'Power Sources',
-    viewBox: '0 0 24 24',
-    paths: [
-      { d: 'M6 12 A6 6 0 1 0 18 12 A6 6 0 1 0 6 12', stroke: 'black', strokeWidth: 2, fill: 'none' }
-    ],
-    defaultProperties: { label: 'GEN' },
-    defaultConnectionPoints: [
-      { id: 'cp1', position: { x: 6, y: 12 }, type: 'input' },
-      { id: 'cp2', position: { x: 18, y: 12 }, type: 'output' },
-    ],
-  },
-  {
-    type: SymbolType.TRANSFORMER,
-    name: 'Transformer',
-    category: 'Power Sources',
-    viewBox: '0 0 24 24',
-    paths: [
-      { d: 'M8 8 Q12 12 8 16 M16 8 Q12 12 16 16', stroke: 'black', strokeWidth: 2, fill: 'none' }
-    ],
-    defaultProperties: { label: 'T' },
-    defaultConnectionPoints: [
-      { id: 'cp1', position: { x: 8, y: 8 }, type: 'input' },
-      { id: 'cp2', position: { x: 16, y: 16 }, type: 'output' },
-    ],
-  },
-
-  // More protection devices
-  {
-    type: SymbolType.FUSE,
-    name: 'Fuse',
-    category: 'Protection Devices',
-    viewBox: '0 0 24 24',
-    paths: [
-      { d: 'M6 12 H18 M10 10 L14 14 M10 14 L14 10', stroke: 'black', strokeWidth: 2, fill: 'none' }
-    ],
-    defaultProperties: { label: 'F' },
-    defaultConnectionPoints: [
-      { id: 'cp1', position: { x: 6, y: 12 }, type: 'input' },
-      { id: 'cp2', position: { x: 18, y: 12 }, type: 'output' },
-    ],
-  },
-  {
-    type: SymbolType.RCD,
-    name: 'RCD',
-    category: 'Protection Devices',
-    viewBox: '0 0 24 24',
-    paths: [
-      { d: 'M6 6 H18 M6 18 H18 M8 6 V18 M16 6 V18 M12 6 V18', stroke: 'black', strokeWidth: 2, fill: 'none' }
-    ],
-    defaultProperties: { label: 'RCD' },
-    defaultConnectionPoints: [
-      { id: 'cp1', position: { x: 6, y: 6 }, type: 'input' },
-      { id: 'cp2', position: { x: 18, y: 6 }, type: 'output' },
-      { id: 'cp3', position: { x: 6, y: 18 }, type: 'input' },
-      { id: 'cp4', position: { x: 18, y: 18 }, type: 'output' },
-    ],
-  },
-
-  // Switches and controls
-  {
-    type: SymbolType.CONTACTOR,
-    name: 'Contactor',
-    category: 'Switches and Controls',
-    viewBox: '0 0 24 24',
-    paths: [
-      { d: 'M8 8 H16 M8 16 H16 M12 8 V16', stroke: 'black', strokeWidth: 2, fill: 'none' }
-    ],
-    defaultProperties: { label: 'KM' },
-    defaultConnectionPoints: [
-      { id: 'cp1', position: { x: 8, y: 12 }, type: 'input' },
-      { id: 'cp2', position: { x: 16, y: 12 }, type: 'output' },
-    ],
-  },
-
-  // Loads
-  {
-    type: SymbolType.LIGHT,
-    name: 'Light',
-    category: 'Loads',
-    viewBox: '0 0 24 24',
-    paths: [
-      { d: 'M12 6 A6 6 0 1 0 12 18 A6 6 0 1 0 12 6 M12 12 L12 18', stroke: 'black', strokeWidth: 2, fill: 'none' }
-    ],
-    defaultProperties: { label: 'L' },
-    defaultConnectionPoints: [
-      { id: 'cp1', position: { x: 12, y: 6 }, type: 'input' },
-      { id: 'cp2', position: { x: 12, y: 18 }, type: 'output' },
-    ],
-  },
-  {
-    type: SymbolType.MOTOR,
-    name: 'Motor',
-    category: 'Loads',
-    viewBox: '0 0 24 24',
-    renderer: undefined, // Replace with actual component if available
-    defaultProperties: { label: 'M' },
-    defaultConnectionPoints: [
-      { id: 'cp1', position: { x: 8, y: 12 }, type: 'input' },
-      { id: 'cp2', position: { x: 16, y: 12 }, type: 'output' },
-    ],
-  },
-  {
-    type: SymbolType.HEATER,
-    name: 'Heater',
-    category: 'Loads',
-    viewBox: '0 0 24 24',
-    paths: [
-      { d: 'M8 8 Q12 16 16 8', stroke: 'black', strokeWidth: 2, fill: 'none' }
-    ],
-    defaultProperties: { label: 'H' },
-    defaultConnectionPoints: [
-      { id: 'cp1', position: { x: 8, y: 8 }, type: 'input' },
-      { id: 'cp2', position: { x: 16, y: 8 }, type: 'output' },
-    ],
-  },
-  {
-    type: SymbolType.SOCKET,
-    name: 'Socket',
-    category: 'Loads',
-    viewBox: '0 0 24 24',
-    paths: [
-      { d: 'M8 8 H16 M8 16 H16 M10 8 V16 M14 8 V16', stroke: 'black', strokeWidth: 2, fill: 'none' }
-    ],
-    defaultProperties: { label: 'S' },
-    defaultConnectionPoints: [
-      { id: 'cp1', position: { x: 8, y: 12 }, type: 'input' },
-      { id: 'cp2', position: { x: 16, y: 12 }, type: 'output' },
-    ],
-  },
-
-  // Measurement
-  {
-    type: SymbolType.AMMETER,
-    name: 'Ammeter',
-    category: 'Measurement',
-    viewBox: '0 0 24 24',
-    paths: [
-      { d: 'M12 4 A8 8 0 1 0 12 20 A8 8 0 1 0 12 4', stroke: 'black', strokeWidth: 2.5, fill: 'none' },
-      { d: 'M10 15 L12 10 L14 15 M11 13 H13', stroke: 'black', strokeWidth: 2, fill: 'none' }
-    ],
-    defaultProperties: { label: 'A' },
-    defaultConnectionPoints: [
-      { id: 'cp1', position: { x: 4, y: 12 }, type: 'input' },
-      { id: 'cp2', position: { x: 20, y: 12 }, type: 'output' }
-    ]
-  },
-  {
-    type: SymbolType.VOLTMETER,
-    name: 'Voltmeter',
-    category: 'Measurement',
-    viewBox: '0 0 24 24',
-    paths: [
-      { d: 'M12 4 A8 8 0 1 0 12 20 A8 8 0 1 0 12 4', stroke: 'black', strokeWidth: 2.5, fill: 'none' },
-      { d: 'M10 10 L12 15 L14 10', stroke: 'black', strokeWidth: 2, fill: 'none' }
-    ],
-    defaultProperties: { label: 'V' },
-    defaultConnectionPoints: [
-      { id: 'cp1', position: { x: 4, y: 12 }, type: 'input' },
-      { id: 'cp2', position: { x: 20, y: 12 }, type: 'output' }
-    ]
-  },
-  {
-    type: SymbolType.WATTMETER,
-    name: 'Wattmeter',
-    category: 'Measurement',
-    viewBox: '0 0 24 24',
-    paths: [
-      { d: 'M12 6 A6 6 0 1 0 12 18 A6 6 0 1 0 12 6 M10 10 L14 14', stroke: 'black', strokeWidth: 2, fill: 'none' }
-    ],
-    defaultProperties: { label: 'W' },
-    defaultConnectionPoints: [
-      { id: 'cp1', position: { x: 8, y: 12 }, type: 'input' },
-      { id: 'cp2', position: { x: 16, y: 12 }, type: 'output' },
-    ],
-  },
-
-  // Control and signaling
-  {
-    type: SymbolType.BELL,
-    name: 'Bell',
-    category: 'Control and Signaling',
-    viewBox: '0 0 24 24',
-    paths: [
-      { d: 'M12 6 A6 6 0 1 0 12 18 A6 6 0 1 0 12 6 M12 18 L12 20', stroke: 'black', strokeWidth: 2, fill: 'none' }
-    ],
-    defaultProperties: { label: 'BELL' },
-    defaultConnectionPoints: [
-      { id: 'cp1', position: { x: 12, y: 6 }, type: 'input' },
-      { id: 'cp2', position: { x: 12, y: 20 }, type: 'output' },
-    ],
-  },
-  {
-    type: SymbolType.BUZZER,
-    name: 'Buzzer',
-    category: 'Control and Signaling',
-    viewBox: '0 0 24 24',
-    paths: [
-      { d: 'M12 6 A6 6 0 1 0 12 18 A6 6 0 1 0 12 6 M10 18 Q12 20 14 18', stroke: 'black', strokeWidth: 2, fill: 'none' }
-    ],
-    defaultProperties: { label: 'BUZ' },
-    defaultConnectionPoints: [
-      { id: 'cp1', position: { x: 12, y: 6 }, type: 'input' },
-      { id: 'cp2', position: { x: 12, y: 20 }, type: 'output' },
-    ],
-  },
-  {
-    type: SymbolType.INDICATOR_LIGHT,
-    name: 'Indicator Light',
-    category: 'Control and Signaling',
-    viewBox: '0 0 24 24',
-    paths: [
-      { d: 'M12 12 A4 4 0 1 0 12 20 A4 4 0 1 0 12 12', stroke: 'black', strokeWidth: 2, fill: 'none' }
-    ],
-    defaultProperties: { label: 'IND' },
-    defaultConnectionPoints: [
-      { id: 'cp1', position: { x: 12, y: 8 }, type: 'input' },
-      { id: 'cp2', position: { x: 12, y: 16 }, type: 'output' },
-    ],
-  },
-
-  // Grounding and bonding
-  {
-    type: SymbolType.EARTH,
-    name: 'Earth',
-    category: 'Grounding and Bonding',
-    viewBox: '0 0 24 24',
-    paths: [
-      { d: 'M12 6 V18 M8 18 H16 M10 16 H14', stroke: 'black', strokeWidth: 2, fill: 'none' }
-    ],
-    defaultProperties: { label: 'E' },
-    defaultConnectionPoints: [
-      { id: 'cp1', position: { x: 12, y: 6 }, type: 'input' },
-      { id: 'cp2', position: { x: 12, y: 18 }, type: 'output' },
-    ],
-  },
-  {
-    type: SymbolType.NEUTRAL,
-    name: 'Neutral',
-    category: 'Grounding and Bonding',
-    viewBox: '0 0 24 24',
-    paths: [
-      { d: 'M12 6 V18 M8 18 H16', stroke: 'black', strokeWidth: 2, fill: 'none' }
-    ],
-    defaultProperties: { label: 'N' },
-    defaultConnectionPoints: [
-      { id: 'cp1', position: { x: 12, y: 6 }, type: 'input' },
-      { id: 'cp2', position: { x: 12, y: 18 }, type: 'output' },
-    ],
-  },
-
-  // Junction boxes and panels
-  {
-    type: SymbolType.JUNCTION_BOX,
-    name: 'Junction Box',
-    category: 'Junction Boxes and Panels',
-    viewBox: '0 0 24 24',
-    paths: [
-      { d: 'M8 8 H16 V16 H8 Z', stroke: 'black', strokeWidth: 2, fill: 'none' }
-    ],
-    defaultProperties: { label: 'JB' },
-    defaultConnectionPoints: [
-      { id: 'cp1', position: { x: 8, y: 12 }, type: 'input' },
-      { id: 'cp2', position: { x: 16, y: 12 }, type: 'output' },
-    ],
-  },
-  {
-    type: SymbolType.DISTRIBUTION_BOARD,
-    name: 'Distribution Board',
-    category: 'Junction Boxes and Panels',
-    viewBox: '0 0 24 24',
-    paths: [
-      { d: 'M8 8 H16 V16 H8 Z M10 10 H14 V14 H10 Z', stroke: 'black', strokeWidth: 2, fill: 'none' }
-    ],
-    defaultProperties: { label: 'DB' },
-    defaultConnectionPoints: [
-      { id: 'cp1', position: { x: 8, y: 12 }, type: 'input' },
-      { id: 'cp2', position: { x: 16, y: 12 }, type: 'output' },
-    ],
-  },
-
-  // Placeholder for custom/user-defined symbols
-  {
-    type: SymbolType.CUSTOM,
-    name: 'Custom Symbol',
-    category: 'Custom',
-    viewBox: '0 0 24 24',
-    paths: [
-      { d: 'M6 6 L18 18 M6 18 L18 6', stroke: 'black', strokeWidth: 2, fill: 'none' }
-    ],
-    defaultProperties: { label: 'CUSTOM' },
-    defaultConnectionPoints: [
-      { id: 'cp1', position: { x: 6, y: 12 }, type: 'input' },
-      { id: 'cp2', position: { x: 18, y: 12 }, type: 'output' },
-    ],
-  },
-
-  // --- New symbols from reference images ---
+  // Power
   {
     type: SymbolType.PHASE_L1,
     name: 'Phase 1 (L1)',
@@ -470,22 +72,6 @@ export const symbolCatalog: SymbolCatalogEntry[] = [
     ]
   },
   {
-    type: SymbolType.ENERGY_METER,
-    name: 'Energy Meter (kWh)',
-    category: 'Measurement',
-    viewBox: '0 0 24 24',
-    paths: [
-      { d: 'M6 8 H18 V16 H6 Z', stroke: 'black', strokeWidth: 2, fill: 'none' },
-      { d: 'M10 12 H14', stroke: 'black', strokeWidth: 1, fill: 'none' },
-      { d: 'M9 15 H15', stroke: 'black', strokeWidth: 1, fill: 'none' }
-    ],
-    defaultProperties: { label: 'kWh' },
-    defaultConnectionPoints: [
-      { id: 'cp1', position: { x: 6, y: 12 }, type: 'input' },
-      { id: 'cp2', position: { x: 18, y: 12 }, type: 'output' }
-    ]
-  },
-  {
     type: SymbolType.AC,
     name: 'Alternating Current (AC)',
     category: 'Power',
@@ -499,22 +85,8 @@ export const symbolCatalog: SymbolCatalogEntry[] = [
       { id: 'cp2', position: { x: 20, y: 12 }, type: 'output' }
     ]
   },
-  {
-    type: SymbolType.THREE_PHASE,
-    name: 'Three Phase (AC)',
-    category: 'Power',
-    viewBox: '0 0 24 24',
-    paths: [
-      { d: 'M4 10 H20', stroke: 'red', strokeWidth: 1.5, fill: 'none' },
-      { d: 'M4 12 H20', stroke: 'yellow', strokeWidth: 1.5, fill: 'none' },
-      { d: 'M4 14 H20', stroke: 'blue', strokeWidth: 1.5, fill: 'none' }
-    ],
-    defaultProperties: { label: '3~' },
-    defaultConnectionPoints: [
-      { id: 'cp1', position: { x: 4, y: 10 }, type: 'input' },
-      { id: 'cp2', position: { x: 20, y: 14 }, type: 'output' }
-    ]
-  },
+
+  // Wiring
   {
     type: SymbolType.CONDUCTOR,
     name: 'Conductor (connection)',
@@ -595,65 +167,777 @@ export const symbolCatalog: SymbolCatalogEntry[] = [
     ]
   },
   {
-    type: SymbolType.LAMP_INCANDESCENT,
-    name: 'Lamp (incandescent)',
-    category: 'Loads',
-    viewBox: '0 0 24 24',
+    type: SymbolType.CIRCUIT_BREAKER_SINGLE_POLE,
+    name: 'Circuit Breaker (single pole)',
+    category: 'Power',
+    viewBox: '0 0 200 300',
     paths: [
-      { d: 'M12 6 A6 6 0 1 0 12 18 A6 6 0 1 0 12 6', stroke: 'black', strokeWidth: 2, fill: 'none' },
-      { d: 'M8 12 L16 12', stroke: 'black', strokeWidth: 2, fill: 'none' }
+      { d: 'M100 20 V80', stroke: '#000', strokeWidth: 2, fill: 'none' },
+      { d: 'M60 80 H140 V220 H60 Z', stroke: '#000', strokeWidth: 2, fill: 'none' },
+      { d: 'M100 120 m-6,0 a6,6 0 1,0 12,0 a6,6 0 1,0 -12,0', fill: '#000' },
+      { d: 'M100 180 m-6,0 a6,6 0 1,0 12,0 a6,6 0 1,0 -12,0', fill: '#000' },
+      { d: 'M125 119 L100 180', stroke: '#000', strokeWidth: 2, fill: 'none' },
+      { d: 'M100 220 V280', stroke: '#000', strokeWidth: 2, fill: 'none' },
     ],
-    defaultProperties: { label: '' },
+    defaultProperties: {},
     defaultConnectionPoints: [
-      { id: 'cp1', position: { x: 8, y: 12 }, type: 'input' },
-      { id: 'cp2', position: { x: 16, y: 12 }, type: 'output' }
-    ]
+      { id: 'top', position: { x: 100, y: 20 }, type: 'input' },
+      { id: 'bottom', position: { x: 100, y: 280 }, type: 'output' },
+    ],
   },
   {
-    type: SymbolType.LAMP_INDICATION,
-    name: 'Lamp (indication)',
-    category: 'Loads',
-    viewBox: '0 0 24 24',
+    type: SymbolType.CIRCUIT_BREAKER_DOUBLE_POLE,
+    name: 'Circuit Breaker (double pole)',
+    category: 'Power',
+    viewBox: '0 0 200 200',
     paths: [
-      { d: 'M12 6 A6 6 0 1 0 12 18 A6 6 0 1 0 12 6', stroke: 'black', strokeWidth: 2, fill: 'none' },
-      { d: 'M8 12 L16 12', stroke: 'black', strokeWidth: 2, fill: 'none' },
-      { d: 'M12 6 L12 18', stroke: 'black', strokeWidth: 1, fill: 'none' }
+      { d: 'M50 60 H150 V140 H50 Z', stroke: 'black', strokeWidth: 2, fill: 'none' },
+      { d: 'M75 20 V74', stroke: 'black', strokeWidth: 2, fill: 'none' },
+      { d: 'M125 20 V74', stroke: 'black', strokeWidth: 2, fill: 'none' },
+      { d: 'M75 126 V180', stroke: 'black', strokeWidth: 2, fill: 'none' },
+      { d: 'M125 126 V180', stroke: 'black', strokeWidth: 2, fill: 'none' },
+      { d: 'M75 80 m-6,0 a6,6 0 1,0 12,0 a6,6 0 1,0 -12,0', fill: 'black' },
+      { d: 'M125 80 m-6,0 a6,6 0 1,0 12,0 a6,6 0 1,0 -12,0', fill: 'black' },
+      { d: 'M75 120 m-6,0 a6,6 0 1,0 12,0 a6,6 0 1,0 -12,0', fill: 'black' },
+      { d: 'M125 120 m-6,0 a6,6 0 1,0 12,0 a6,6 0 1,0 -12,0', fill: 'black' },
+      { d: 'M75 114 L95.6 78', stroke: 'black', strokeWidth: 2, fill: 'none' },
+      { d: 'M125 114 L145.6 78', stroke: 'black', strokeWidth: 2, fill: 'none' },
+      { d: 'M85.3 96 L135.3 96', stroke: 'black', strokeWidth: 2, fill: 'none' },
     ],
-    defaultProperties: { label: 'P' },
+    defaultProperties: {},
     defaultConnectionPoints: [
-      { id: 'cp1', position: { x: 8, y: 12 }, type: 'input' },
-      { id: 'cp2', position: { x: 16, y: 12 }, type: 'output' }
-    ]
+      { id: 'left_top', position: { x: 75, y: 20 }, type: 'input' },
+      { id: 'right_top', position: { x: 125, y: 20 }, type: 'input' },
+      { id: 'left_bottom', position: { x: 75, y: 180 }, type: 'output' },
+      { id: 'right_bottom', position: { x: 125, y: 180 }, type: 'output' },
+    ],
   },
   {
-    type: SymbolType.RESISTOR,
-    name: 'Resistor',
-    category: 'Passive',
-    viewBox: '0 0 24 24',
+    type: SymbolType.CIRCUIT_BREAKER_TRIPLE_POLE,
+    name: 'Circuit Breaker (triple pole)',
+    category: 'Power',
+    viewBox: '0 0 300 200',
     paths: [
-      { d: 'M4 12 H8 L10 8 L14 16 L16 12 H20', stroke: 'black', strokeWidth: 2, fill: 'none' }
+      { d: 'M30 60 H270 V140 H30 Z', stroke: 'black', strokeWidth: 2, fill: 'none' },
+      { d: 'M75 20 V74', stroke: 'red', strokeWidth: 2, fill: 'none' },
+      { d: 'M75 126 V180', stroke: 'red', strokeWidth: 2, fill: 'none' },
+      { d: 'M150 20 V74', stroke: 'yellow', strokeWidth: 2, fill: 'none' },
+      { d: 'M150 126 V180', stroke: 'yellow', strokeWidth: 2, fill: 'none' },
+      { d: 'M225 20 V74', stroke: 'blue', strokeWidth: 2, fill: 'none' },
+      { d: 'M225 126 V180', stroke: 'blue', strokeWidth: 2, fill: 'none' },
+      { d: 'M75 80 m-6,0 a6,6 0 1,0 12,0 a6,6 0 1,0 -12,0', fill: 'black' },
+      { d: 'M150 80 m-6,0 a6,6 0 1,0 12,0 a6,6 0 1,0 -12,0', fill: 'black' },
+      { d: 'M225 80 m-6,0 a6,6 0 1,0 12,0 a6,6 0 1,0 -12,0', fill: 'black' },
+      { d: 'M75 120 m-6,0 a6,6 0 1,0 12,0 a6,6 0 1,0 -12,0', fill: 'black' },
+      { d: 'M150 120 m-6,0 a6,6 0 1,0 12,0 a6,6 0 1,0 -12,0', fill: 'black' },
+      { d: 'M225 120 m-6,0 a6,6 0 1,0 12,0 a6,6 0 1,0 -12,0', fill: 'black' },
+      { d: 'M75 114 L95.6 78', stroke: 'black', strokeWidth: 2, fill: 'none' },
+      { d: 'M150 114 L170.6 78', stroke: 'black', strokeWidth: 2, fill: 'none' },
+      { d: 'M225 114 L245.6 78', stroke: 'black', strokeWidth: 2, fill: 'none' },
+      { d: 'M85.3 96 L160.3 96', stroke: 'black', strokeWidth: 2, fill: 'none' },
+      { d: 'M160.3 96 L235.3 96', stroke: 'black', strokeWidth: 2, fill: 'none' },
     ],
-    defaultProperties: { label: '' },
+    defaultProperties: {},
     defaultConnectionPoints: [
-      { id: 'cp1', position: { x: 4, y: 12 }, type: 'input' },
-      { id: 'cp2', position: { x: 20, y: 12 }, type: 'output' }
-    ]
+      { id: 'left_top', position: { x: 75, y: 20 }, type: 'input' },
+      { id: 'middle_top', position: { x: 150, y: 20 }, type: 'input' },
+      { id: 'right_top', position: { x: 225, y: 20 }, type: 'input' },
+      { id: 'left_bottom', position: { x: 75, y: 180 }, type: 'output' },
+      { id: 'middle_bottom', position: { x: 150, y: 180 }, type: 'output' },
+      { id: 'right_bottom', position: { x: 225, y: 180 }, type: 'output' },
+    ],
   },
   {
-    type: SymbolType.CAPACITOR,
-    name: 'Capacitor',
-    category: 'Passive',
-    viewBox: '0 0 24 24',
+    type: SymbolType.ISOLATOR_DOUBLE_POLE,
+    name: 'Isolator (double pole)',
+    category: 'Power',
+    viewBox: '0 0 200 200',
     paths: [
-      { d: 'M8 6 V18', stroke: 'black', strokeWidth: 2, fill: 'none' },
-      { d: 'M16 6 V18', stroke: 'black', strokeWidth: 2, fill: 'none' },
-      { d: 'M4 12 H8', stroke: 'black', strokeWidth: 2, fill: 'none' },
-      { d: 'M16 12 H20', stroke: 'black', strokeWidth: 2, fill: 'none' }
+      { d: 'M75 20 V74', stroke: 'black', strokeWidth: 2, fill: 'none' },
+      { d: 'M125 20 V74', stroke: 'black', strokeWidth: 2, fill: 'none' },
+      { d: 'M75 126 V180', stroke: 'black', strokeWidth: 2, fill: 'none' },
+      { d: 'M125 126 V180', stroke: 'black', strokeWidth: 2, fill: 'none' },
+      { d: 'M75 80 m-6,0 a6,6 0 1,0 12,0 a6,6 0 1,0 -12,0', fill: 'black' },
+      { d: 'M125 80 m-6,0 a6,6 0 1,0 12,0 a6,6 0 1,0 -12,0', fill: 'black' },
+      { d: 'M75 120 m-6,0 a6,6 0 1,0 12,0 a6,6 0 1,0 -12,0', fill: 'black' },
+      { d: 'M125 120 m-6,0 a6,6 0 1,0 12,0 a6,6 0 1,0 -12,0', fill: 'black' },
+      { d: 'M75 114 L95.6 78', stroke: 'black', strokeWidth: 2, fill: 'none' },
+      { d: 'M125 114 L145.6 78', stroke: 'black', strokeWidth: 2, fill: 'none' },
+      { d: 'M85.3 96 L135.3 96', stroke: 'black', strokeWidth: 2, fill: 'none' },
     ],
-    defaultProperties: { label: '' },
+    defaultProperties: {},
     defaultConnectionPoints: [
-      { id: 'cp1', position: { x: 4, y: 12 }, type: 'input' },
-      { id: 'cp2', position: { x: 20, y: 12 }, type: 'output' }
-    ]
+      { id: 'left_top', position: { x: 75, y: 20 }, type: 'input' },
+      { id: 'right_top', position: { x: 125, y: 20 }, type: 'input' },
+      { id: 'left_bottom', position: { x: 75, y: 180 }, type: 'output' },
+      { id: 'right_bottom', position: { x: 125, y: 180 }, type: 'output' },
+    ],
   },
+  {
+    type: SymbolType.ISOLATOR_TRIPLE_POLE,
+    name: 'Isolator (triple pole)',
+    category: 'Power',
+    viewBox: '0 0 300 200',
+    paths: [
+      { d: 'M75 20 V74', stroke: 'red', strokeWidth: 2, fill: 'none' },
+      { d: 'M75 126 V180', stroke: 'red', strokeWidth: 2, fill: 'none' },
+      { d: 'M150 20 V74', stroke: 'yellow', strokeWidth: 2, fill: 'none' },
+      { d: 'M150 126 V180', stroke: 'yellow', strokeWidth: 2, fill: 'none' },
+      { d: 'M225 20 V74', stroke: 'blue', strokeWidth: 2, fill: 'none' },
+      { d: 'M225 126 V180', stroke: 'blue', strokeWidth: 2, fill: 'none' },
+      { d: 'M75 80 m-6,0 a6,6 0 1,0 12,0 a6,6 0 1,0 -12,0', fill: 'black' },
+      { d: 'M150 80 m-6,0 a6,6 0 1,0 12,0 a6,6 0 1,0 -12,0', fill: 'black' },
+      { d: 'M225 80 m-6,0 a6,6 0 1,0 12,0 a6,6 0 1,0 -12,0', fill: 'black' },
+      { d: 'M75 120 m-6,0 a6,6 0 1,0 12,0 a6,6 0 1,0 -12,0', fill: 'black' },
+      { d: 'M150 120 m-6,0 a6,6 0 1,0 12,0 a6,6 0 1,0 -12,0', fill: 'black' },
+      { d: 'M225 120 m-6,0 a6,6 0 1,0 12,0 a6,6 0 1,0 -12,0', fill: 'black' },
+      { d: 'M75 114 L95.6 78', stroke: 'black', strokeWidth: 2, fill: 'none' },
+      { d: 'M150 114 L170.6 78', stroke: 'black', strokeWidth: 2, fill: 'none' },
+      { d: 'M225 114 L245.6 78', stroke: 'black', strokeWidth: 2, fill: 'none' },
+      { d: 'M85.3 96 L160.3 96', stroke: 'black', strokeWidth: 2, fill: 'none' },
+      { d: 'M160.3 96 L235.3 96', stroke: 'black', strokeWidth: 2, fill: 'none' },
+    ],
+    defaultProperties: {},
+    defaultConnectionPoints: [
+      { id: 'left_top', position: { x: 75, y: 20 }, type: 'input' },
+      { id: 'middle_top', position: { x: 150, y: 20 }, type: 'input' },
+      { id: 'right_top', position: { x: 225, y: 20 }, type: 'input' },
+      { id: 'left_bottom', position: { x: 75, y: 180 }, type: 'output' },
+      { id: 'middle_bottom', position: { x: 150, y: 180 }, type: 'output' },
+      { id: 'right_bottom', position: { x: 225, y: 180 }, type: 'output' },
+    ],
+  },
+  {
+    type: SymbolType.PUSH_BUTTON_START,
+    name: 'Push button (start)',
+    category: 'Power',
+    viewBox: '0 0 200 200',
+    paths: [
+      { d: 'M80 70 V85', stroke: 'black', strokeWidth: 3, fill: 'none' },
+      { d: 'M80 70 H120', stroke: 'black', strokeWidth: 3, fill: 'none' },
+      { d: 'M120 70 V85', stroke: 'black', strokeWidth: 3, fill: 'none' },
+      { d: 'M100 70 V110', stroke: 'black', strokeWidth: 3, fill: 'none' },
+      { d: 'M70 110 H130', stroke: 'black', strokeWidth: 3, fill: 'none' },
+      { d: 'M20 140 H80', stroke: 'black', strokeWidth: 3, fill: 'none' },
+      { d: 'M120 140 H180', stroke: 'black', strokeWidth: 3, fill: 'none' },
+      { d: 'M80 140 m-6,0 a6,6 0 1,0 12,0 a6,6 0 1,0 -12,0', fill: 'black' },
+      { d: 'M120 140 m-6,0 a6,6 0 1,0 12,0 a6,6 0 1,0 -12,0', fill: 'black' },
+    ],
+    defaultProperties: {},
+    defaultConnectionPoints: [
+      { id: 'left', position: { x: 20, y: 140 }, type: 'input' },
+      { id: 'right', position: { x: 180, y: 140 }, type: 'output' },
+    ],
+  },
+  {
+    type: SymbolType.PUSH_BUTTON_STOP,
+    name: 'Push button (stop)',
+    category: 'Power',
+    viewBox: '0 0 200 200',
+    paths: [
+      { d: 'M80 69 V85', stroke: 'black', strokeWidth: 3, fill: 'none' },
+      { d: 'M80 70 H120', stroke: 'black', strokeWidth: 3, fill: 'none' },
+      { d: 'M120 69 V85', stroke: 'black', strokeWidth: 3, fill: 'none' },
+      { d: 'M100 70 V130', stroke: 'black', strokeWidth: 3, fill: 'none' },
+      { d: 'M70 130 H130', stroke: 'black', strokeWidth: 3, fill: 'none' },
+      { d: 'M20 125 H80', stroke: 'black', strokeWidth: 3, fill: 'none' },
+      { d: 'M120 125 H180', stroke: 'black', strokeWidth: 3, fill: 'none' },
+      { d: 'M80 125 m-6,0 a6,6 0 1,0 12,0 a6,6 0 1,0 -12,0', fill: 'black' },
+      { d: 'M120 125 m-6,0 a6,6 0 1,0 12,0 a6,6 0 1,0 -12,0', fill: 'black' },
+    ],
+    defaultProperties: {},
+    defaultConnectionPoints: [
+      { id: 'left', position: { x: 20, y: 125 }, type: 'input' },
+      { id: 'right', position: { x: 180, y: 125 }, type: 'output' },
+    ],
+  },
+  {
+    type: SymbolType.PUSH_BUTTON_EMERGENCY_STOP,
+    name: 'Push button (emergency stop)',
+    category: 'Power',
+    viewBox: '0 0 200 200',
+    paths: [
+      { d: 'M80 69 V85', stroke: 'black', strokeWidth: 3, fill: 'none' },
+      { d: 'M80 70 H120', stroke: 'black', strokeWidth: 3, fill: 'none' },
+      { d: 'M120 69 V85', stroke: 'black', strokeWidth: 3, fill: 'none' },
+      { d: 'M100 70 V130', stroke: 'black', strokeWidth: 3, fill: 'none' },
+      { d: 'M70 130 H130', stroke: 'black', strokeWidth: 3, fill: 'none' },
+      { d: 'M20 125 H80', stroke: 'black', strokeWidth: 3, fill: 'none' },
+      { d: 'M120 125 H180', stroke: 'black', strokeWidth: 3, fill: 'none' },
+      { d: 'M80 125 m-6,0 a6,6 0 1,0 12,0 a6,6 0 1,0 -12,0', fill: 'black' },
+      { d: 'M120 125 m-6,0 a6,6 0 1,0 12,0 a6,6 0 1,0 -12,0', fill: 'black' },
+    ],
+    defaultProperties: {},
+    defaultConnectionPoints: [
+      { id: 'left', position: { x: 20, y: 125 }, type: 'input' },
+      { id: 'right', position: { x: 180, y: 125 }, type: 'output' },
+    ],
+  },
+  {
+    type: SymbolType.COIL_CONTACTOR,
+    name: 'Coil (contactor)',
+    category: 'Power',
+    viewBox: '0 0 200 260',
+    paths: [
+      { d: 'M100 50 V100', stroke: 'black', strokeWidth: 2, fill: 'none' },
+      { d: 'M70 100 H130 V180 H70 Z', stroke: 'black', strokeWidth: 2, fill: 'none' },
+      { d: 'M71 180 L130 100', stroke: 'black', strokeWidth: 2, fill: 'none' },
+      { d: 'M100 180 V220', stroke: 'black', strokeWidth: 2, fill: 'none' },
+      { d: 'M100 50 m-4,0 a4,4 0 1,0 8,0 a4,4 0 1,0 -8,0', fill: 'black' },
+      { d: 'M100 220 m-4,0 a4,4 0 1,0 8,0 a4,4 0 1,0 -8,0', fill: 'black' },
+    ],
+    defaultProperties: {},
+    defaultConnectionPoints: [
+      { id: 'top', position: { x: 100, y: 50 }, type: 'input' },
+      { id: 'bottom', position: { x: 100, y: 220 }, type: 'output' },
+    ],
+  },
+  {
+    type: SymbolType.CONTACTOR_TRIPLE,
+    name: 'Contactor (triple)',
+    category: 'Power',
+    viewBox: '0 0 400 300',
+    paths: [
+      { d: 'M50 20 V110', stroke: 'red', strokeWidth: 2, fill: 'none' },
+      { d: 'M50 110 m-4,0 a4,4 0 1,0 8,0 a4,4 0 1,0 -8,0', fill: 'black' },
+      { d: 'M70 100 V170', stroke: 'black', strokeWidth: 2, fill: 'none' },
+      { d: 'M50 160 m-4,0 a4,4 0 1,0 8,0 a4,4 0 1,0 -8,0', fill: 'black' },
+      { d: 'M50 160 V240', stroke: 'red', strokeWidth: 2, fill: 'none' },
+      { d: 'M130 20 V110', stroke: 'yellow', strokeWidth: 2, fill: 'none' },
+      { d: 'M130 110 m-4,0 a4,4 0 1,0 8,0 a4,4 0 1,0 -8,0', fill: 'black' },
+      { d: 'M150 100 V170', stroke: 'black', strokeWidth: 2, fill: 'none' },
+      { d: 'M130 160 m-4,0 a4,4 0 1,0 8,0 a4,4 0 1,0 -8,0', fill: 'black' },
+      { d: 'M130 160 V240', stroke: 'yellow', strokeWidth: 2, fill: 'none' },
+      { d: 'M210 20 V110', stroke: 'blue', strokeWidth: 2, fill: 'none' },
+      { d: 'M210 110 m-4,0 a4,4 0 1,0 8,0 a4,4 0 1,0 -8,0', fill: 'black' },
+      { d: 'M230 100 V170', stroke: 'black', strokeWidth: 2, fill: 'none' },
+      { d: 'M210 160 m-4,0 a4,4 0 1,0 8,0 a4,4 0 1,0 -8,0', fill: 'black' },
+      { d: 'M210 160 V240', stroke: 'blue', strokeWidth: 2, fill: 'none' },
+      { d: 'M70 130 H280', stroke: 'black', strokeWidth: 2, fill: 'none' },
+      { d: 'M250 130 H280', stroke: 'black', strokeWidth: 2, fill: 'none' },
+      { d: 'M280 100 H340 V160 H280 Z', stroke: 'black', strokeWidth: 2, fill: 'none' },
+      { d: 'M280 160 L340 100', stroke: 'black', strokeWidth: 2, fill: 'none' },
+      { d: 'M310 100 V60', stroke: 'black', strokeWidth: 2, fill: 'none' },
+      { d: 'M310 160 V200', stroke: 'black', strokeWidth: 2, fill: 'none' },
+    ],
+    defaultProperties: {},
+    defaultConnectionPoints: [
+      { id: '1', position: { x: 50, y: 20 }, type: 'input' },
+      { id: '2', position: { x: 50, y: 240 }, type: 'output' },
+      { id: '3', position: { x: 130, y: 20 }, type: 'input' },
+      { id: '4', position: { x: 130, y: 240 }, type: 'output' },
+      { id: '5', position: { x: 210, y: 20 }, type: 'input' },
+      { id: '6', position: { x: 210, y: 240 }, type: 'output' },
+    ],
+  },
+  {
+    type: SymbolType.COIL_TIME_RELAY,
+    name: 'Coil (time relay)',
+    category: 'Power',
+    viewBox: '0 0 200 260',
+    paths: [
+      { d: 'M100 50 V100', stroke: 'black', strokeWidth: 2, fill: 'none' },
+      { d: 'M70 100 H130 V180 H70 Z', stroke: 'black', strokeWidth: 2, fill: 'none' },
+      { d: 'M71 180 L130 100', stroke: 'black', strokeWidth: 2, fill: 'none' },
+      { d: 'M100 180 V220', stroke: 'black', strokeWidth: 2, fill: 'none' },
+      { d: 'M100 50 m-4,0 a4,4 0 1,0 8,0 a4,4 0 1,0 -8,0', fill: 'black' },
+      { d: 'M100 220 m-4,0 a4,4 0 1,0 8,0 a4,4 0 1,0 -8,0', fill: 'black' },
+    ],
+    defaultProperties: {},
+    defaultConnectionPoints: [
+      { id: 'top', position: { x: 100, y: 50 }, type: 'input' },
+      { id: 'bottom', position: { x: 100, y: 220 }, type: 'output' },
+    ],
+  },
+  {
+    type: SymbolType.CONTACT_CONTACTOR_NO,
+    name: 'Contact of contactor (n/o - normally open)',
+    category: 'Power',
+    viewBox: '0 0 200 120',
+    paths: [
+      { d: 'M20 70 H70', stroke: 'black', strokeWidth: 3, fill: 'none' },
+      { d: 'M130 70 H185', stroke: 'black', strokeWidth: 3, fill: 'none' },
+      { d: 'M70 70 m-6,0 a6,6 0 1,0 12,0 a6,6 0 1,0 -12,0', fill: 'black' },
+      { d: 'M130 70 m-6,0 a6,6 0 1,0 12,0 a6,6 0 1,0 -12,0', fill: 'black' },
+      { d: 'M65 55 H135', stroke: 'black', strokeWidth: 3, fill: 'none' },
+    ],
+    defaultProperties: {},
+    defaultConnectionPoints: [
+      { id: 'left', position: { x: 20, y: 70 }, type: 'input' },
+      { id: 'right', position: { x: 185, y: 70 }, type: 'output' },
+    ],
+  },
+  {
+    type: SymbolType.CONTACT_CONTACTOR_NC,
+    name: 'Contact of contactor (n/c - normally close)',
+    category: 'Power',
+    viewBox: '0 0 200 120',
+    paths: [
+      { d: 'M20 70 H70', stroke: 'black', strokeWidth: 3, fill: 'none' },
+      { d: 'M130 70 H185', stroke: 'black', strokeWidth: 3, fill: 'none' },
+      { d: 'M70 70 m-6,0 a6,6 0 1,0 12,0 a6,6 0 1,0 -12,0', fill: 'black' },
+      { d: 'M130 70 m-6,0 a6,6 0 1,0 12,0 a6,6 0 1,0 -12,0', fill: 'black' },
+      { d: 'M65 63 H135', stroke: 'black', strokeWidth: 3, fill: 'none' },
+    ],
+    defaultProperties: {},
+    defaultConnectionPoints: [
+      { id: 'left', position: { x: 20, y: 70 }, type: 'input' },
+      { id: 'right', position: { x: 185, y: 70 }, type: 'output' },
+    ],
+  },
+  {
+    type: SymbolType.CONTACT_TIME_RELAY_NO,
+    name: 'Contact of time relay (n/o - normally open)',
+    category: 'Power',
+    viewBox: '0 0 200 120',
+    paths: [
+      { d: 'M20 70 H70', stroke: 'black', strokeWidth: 3, fill: 'none' },
+      { d: 'M130 70 H185', stroke: 'black', strokeWidth: 3, fill: 'none' },
+      { d: 'M70 70 m-6,0 a6,6 0 1,0 12,0 a6,6 0 1,0 -12,0', fill: 'black' },
+      { d: 'M130 70 m-6,0 a6,6 0 1,0 12,0 a6,6 0 1,0 -12,0', fill: 'black' },
+      { d: 'M65 55 H135', stroke: 'black', strokeWidth: 3, fill: 'none' },
+    ],
+    defaultProperties: {},
+    defaultConnectionPoints: [
+      { id: 'left', position: { x: 20, y: 70 }, type: 'input' },
+      { id: 'right', position: { x: 185, y: 70 }, type: 'output' },
+    ],
+  },
+  {
+    type: SymbolType.CONTACT_TIME_RELAY_NC,
+    name: 'Contact of time relay (n/c - normally close)',
+    category: 'Power',
+    viewBox: '0 0 200 120',
+    paths: [
+      { d: 'M20 70 H70', stroke: 'black', strokeWidth: 3, fill: 'none' },
+      { d: 'M130 70 H185', stroke: 'black', strokeWidth: 3, fill: 'none' },
+      { d: 'M70 70 m-6,0 a6,6 0 1,0 12,0 a6,6 0 1,0 -12,0', fill: 'black' },
+      { d: 'M130 70 m-6,0 a6,6 0 1,0 12,0 a6,6 0 1,0 -12,0', fill: 'black' },
+      { d: 'M65 63 H135', stroke: 'black', strokeWidth: 3, fill: 'none' },
+    ],
+    defaultProperties: {},
+    defaultConnectionPoints: [
+      { id: 'left', position: { x: 20, y: 70 }, type: 'input' },
+      { id: 'right', position: { x: 185, y: 70 }, type: 'output' },
+    ],
+  },
+
+  // OVERLOAD RELAYS
+    {
+    type: SymbolType.OVERLOAD_RELAY_TRIPLE_POLE,
+    name: 'Overload relay (triple pole)',
+    category: 'Power',
+    viewBox: '0 0 250 200',
+    paths: [
+      { d: 'M80 25 m-8,0 a8,8 0 1,0 16,0 a8,8 0 1,0 -16,0', fill: 'black' },
+      { d: 'M125 25 m-8,0 a8,8 0 1,0 16,0 a8,8 0 1,0 -16,0', fill: 'black' },
+      { d: 'M170 25 m-8,0 a8,8 0 1,0 16,0 a8,8 0 1,0 -16,0', fill: 'black' },
+      { d: 'M80 175 m-8,0 a8,8 0 1,0 16,0 a8,8 0 1,0 -16,0', fill: 'black' },
+      { d: 'M125 175 m-8,0 a8,8 0 1,0 16,0 a8,8 0 1,0 -16,0', fill: 'black' },
+      { d: 'M170 175 m-8,0 a8,8 0 1,0 16,0 a8,8 0 1,0 -16,0', fill: 'black' },
+      { d: 'M60 50 H210 V150 H60 Z', stroke: 'black', strokeWidth: 2, fill: 'none' },
+      { d: 'M80 33 V50', stroke: 'red', strokeWidth: 2, fill: 'none' },
+      { d: 'M125 33 V50', stroke: 'yellow', strokeWidth: 2, fill: 'none' },
+      { d: 'M170 33 V50', stroke: 'blue', strokeWidth: 2, fill: 'none' },
+      { d: 'M80 150 V167', stroke: 'red', strokeWidth: 2, fill: 'none' },
+      { d: 'M125 150 V167', stroke: 'yellow', strokeWidth: 2, fill: 'none' },
+      { d: 'M170 150 V167', stroke: 'blue', strokeWidth: 2, fill: 'none' },
+      { d: 'M80 50 V80', stroke: 'red', strokeWidth: 2, fill: 'none' },
+      { d: 'M80 80 H100', stroke: 'red', strokeWidth: 2, fill: 'none' },
+      { d: 'M100 80 V120', stroke: 'red', strokeWidth: 2, fill: 'none' },
+      { d: 'M80 120 H100', stroke: 'red', strokeWidth: 2, fill: 'none' },
+      { d: 'M80 120 V150', stroke: 'red', strokeWidth: 2, fill: 'none' },
+      { d: 'M125 50 V80', stroke: 'yellow', strokeWidth: 2, fill: 'none' },
+      { d: 'M125 80 H145', stroke: 'yellow', strokeWidth: 2, fill: 'none' },
+      { d: 'M145 80 V120', stroke: 'yellow', strokeWidth: 2, fill: 'none' },
+      { d: 'M125 120 H145', stroke: 'yellow', strokeWidth: 2, fill: 'none' },
+      { d: 'M125 120 V150', stroke: 'yellow', strokeWidth: 2, fill: 'none' },
+      { d: 'M170 50 V80', stroke: 'blue', strokeWidth: 2, fill: 'none' },
+      { d: 'M170 80 H185', stroke: 'blue', strokeWidth: 2, fill: 'none' },
+      { d: 'M185 80 V120', stroke: 'blue', strokeWidth: 2, fill: 'none' },
+      { d: 'M170 120 H185', stroke: 'blue', strokeWidth: 2, fill: 'none' },
+      { d: 'M170 120 V150', stroke: 'blue', strokeWidth: 2, fill: 'none' },
+    ],
+    defaultProperties: {},
+    defaultConnectionPoints: [
+      { id: 'top1', position: { x: 80, y: 25 }, type: 'input' },
+      { id: 'top2', position: { x: 125, y: 25 }, type: 'input' },
+      { id: 'top3', position: { x: 170, y: 25 }, type: 'input' },
+      { id: 'bottom1', position: { x: 80, y: 175 }, type: 'output' },
+      { id: 'bottom2', position: { x: 125, y: 175 }, type: 'output' },
+      { id: 'bottom3', position: { x: 170, y: 175 }, type: 'output' },
+    ],
+  },
+  {
+    type: SymbolType.OVERLOAD_RELAY,
+    name: 'Overload relay',
+    category: 'Power',
+    viewBox: '0 0 150 200',
+    paths: [
+      { d: 'M75 25 m-8,0 a8,8 0 1,0 16,0 a8,8 0 1,0 -16,0', fill: 'black' },
+      { d: 'M75 175 m-8,0 a8,8 0 1,0 16,0 a8,8 0 1,0 -16,0', fill: 'black' },
+      { d: 'M45 50 H105 V150 H45 Z', stroke: 'black', strokeWidth: 2, fill: 'none' },
+      { d: 'M75 33 V50', stroke: 'black', strokeWidth: 2, fill: 'none' },
+      { d: 'M75 150 V167', stroke: 'black', strokeWidth: 2, fill: 'none' },
+      { d: 'M75 50 V80', stroke: 'black', strokeWidth: 2, fill: 'none' },
+      { d: 'M75 80 H90', stroke: 'black', strokeWidth: 2, fill: 'none' },
+      { d: 'M90 80 V120', stroke: 'black', strokeWidth: 2, fill: 'none' },
+      { d: 'M75 120 H90', stroke: 'black', strokeWidth: 2, fill: 'none' },
+      { d: 'M75 120 V150', stroke: 'black', strokeWidth: 2, fill: 'none' },
+    ],
+    defaultProperties: {},
+    defaultConnectionPoints: [
+      { id: 'top', position: { x: 75, y: 25 }, type: 'input' },
+      { id: 'bottom', position: { x: 75, y: 175 }, type: 'output' },
+    ],
+  },
+
+  // MOTORS
+    {
+    type: SymbolType.MOTOR_AC,
+    name: 'Motor (A.C.)',
+    category: 'Power',
+    viewBox: '0 0 200 100',
+    paths: [
+      { d: 'M20 50 H60', stroke: 'black', strokeWidth: 2, fill: 'none' },
+      { d: 'M140 50 H180', stroke: 'black', strokeWidth: 2, fill: 'none' },
+      { d: 'M100 50 m-40,0 a40,40 0 1,0 80,0 a40,40 0 1,0 -80,0', stroke: 'black', strokeWidth: 2, fill: 'none' },
+    ],
+    defaultProperties: {},
+    defaultConnectionPoints: [
+      { id: 'left', position: { x: 20, y: 50 }, type: 'input' },
+      { id: 'right', position: { x: 180, y: 50 }, type: 'output' },
+    ],
+  },
+  {
+    type: SymbolType.MOTOR_THREE_PHASE_DOL,
+    name: 'Motor Three-phase induction (direct on line)',
+    category: 'Power',
+    viewBox: '0 0 200 250',
+    paths: [
+      { d: 'M60 34 m-5,0 a5,5 0 1,0 10,0 a5,5 0 1,0 -10,0', fill: 'black' },
+      { d: 'M100 34 m-5,0 a5,5 0 1,0 10,0 a5,5 0 1,0 -10,0', fill: 'black' },
+      { d: 'M140 34 m-5,0 a5,5 0 1,0 10,0 a5,5 0 1,0 -10,0', fill: 'black' },
+      { d: 'M60 38 V120', stroke: 'red', strokeWidth: 2, fill: 'none' },
+      { d: 'M100 38 V120', stroke: 'yellow', strokeWidth: 2, fill: 'none' },
+      { d: 'M140 38 V120', stroke: 'blue', strokeWidth: 2, fill: 'none' },
+      { d: 'M100 160 m-40,0 a40,40 0 1,0 80,0 a40,40 0 1,0 -80,0', stroke: 'black', strokeWidth: 2, fill: 'none' },
+      { d: 'M60 120 L75 130', stroke: 'red', strokeWidth: 2, fill: 'none' },
+      { d: 'M100 120 V120', stroke: 'yellow', strokeWidth: 2, fill: 'none' },
+      { d: 'M140 120 L125 130', stroke: 'blue', strokeWidth: 2, fill: 'none' },
+    ],
+    defaultProperties: {},
+    defaultConnectionPoints: [
+      { id: 'A', position: { x: 60, y: 34 }, type: 'input' },
+      { id: 'B', position: { x: 100, y: 34 }, type: 'input' },
+      { id: 'C', position: { x: 140, y: 34 }, type: 'input' },
+    ],
+  },
+  {
+    type: SymbolType.MOTOR_THREE_PHASE_STAR_DELTA,
+    name: 'Motor Three-phase induction (star-delta)',
+    category: 'Power',
+    viewBox: '0 0 250 300',
+    paths: [
+      { d: 'M80 43 m-5,0 a5,5 0 1,0 10,0 a5,5 0 1,0 -10,0', fill: 'black' },
+      { d: 'M125 43 m-5,0 a5,5 0 1,0 10,0 a5,5 0 1,0 -10,0', fill: 'black' },
+      { d: 'M170 43 m-5,0 a5,5 0 1,0 10,0 a5,5 0 1,0 -10,0', fill: 'black' },
+      { d: 'M78 256 m-5,0 a5,5 0 1,0 10,0 a5,5 0 1,0 -10,0', fill: 'black' },
+      { d: 'M125 257 m-5,0 a5,5 0 1,0 10,0 a5,5 0 1,0 -10,0', fill: 'black' },
+      { d: 'M172 256 m-5,0 a5,5 0 1,0 10,0 a5,5 0 1,0 -10,0', fill: 'black' },
+      { d: 'M125 150 m-45,0 a45,45 0 1,0 90,0 a45,45 0 1,0 -90,0', stroke: 'black', strokeWidth: 2, fill: 'none' },
+      { d: 'M80 48 L95 115', stroke: 'red', strokeWidth: 2, fill: 'none' },
+      { d: 'M125 48 V105', stroke: 'yellow', strokeWidth: 2, fill: 'none' },
+      { d: 'M170 48 L155 115', stroke: 'blue', strokeWidth: 2, fill: 'none' },
+      { d: 'M95 185 L80 252', stroke: 'blue', strokeWidth: 2, fill: 'none' },
+      { d: 'M125 195 V252', stroke: 'yellow', strokeWidth: 2, fill: 'none' },
+      { d: 'M155 185 L170 252', stroke: 'red', strokeWidth: 2, fill: 'none' },
+    ],
+    defaultProperties: {},
+    defaultConnectionPoints: [
+      { id: 'A1', position: { x: 80, y: 43 }, type: 'input' },
+      { id: 'B1', position: { x: 125, y: 43 }, type: 'input' },
+      { id: 'C1', position: { x: 170, y: 43 }, type: 'input' },
+      { id: 'A2', position: { x: 78, y: 256 }, type: 'output' },
+      { id: 'B2', position: { x: 125, y: 257 }, type: 'output' },
+      { id: 'C2', position: { x: 172, y: 256 }, type: 'output' },
+    ],
+  },
+  {
+    type: SymbolType.MOTOR_THREE_PHASE_SLIP_RING,
+    name: 'Motor Three-phase induction (slip ring)',
+    category: 'Power',
+    viewBox: '0 0 200 300',
+    paths: [
+      { d: 'M70 34 m-5,0 a5,5 0 1,0 10,0 a5,5 0 1,0 -10,0', fill: 'black' },
+      { d: 'M100 34 m-5,0 a5,5 0 1,0 10,0 a5,5 0 1,0 -10,0', fill: 'black' },
+      { d: 'M130 34 m-5,0 a5,5 0 1,0 10,0 a5,5 0 1,0 -10,0', fill: 'black' },
+      { d: 'M80 267 m-5,0 a5,5 0 1,0 10,0 a5,5 0 1,0 -10,0', fill: 'black' },
+      { d: 'M100 267 m-5,0 a5,5 0 1,0 10,0 a5,5 0 1,0 -10,0', fill: 'black' },
+      { d: 'M120 267 m-5,0 a5,5 0 1,0 10,0 a5,5 0 1,0 -10,0', fill: 'black' },
+      { d: 'M70 38 V90', stroke: 'red', strokeWidth: 2, fill: 'none' },
+      { d: 'M100 38 V90', stroke: 'yellow', strokeWidth: 2, fill: 'none' },
+      { d: 'M130 38 V90', stroke: 'blue', strokeWidth: 2, fill: 'none' },
+      { d: 'M80 210 V262', stroke: 'red', strokeWidth: 2, fill: 'none' },
+      { d: 'M100 210 V262', stroke: 'yellow', strokeWidth: 2, fill: 'none' },
+      { d: 'M120 210 V262', stroke: 'blue', strokeWidth: 2, fill: 'none' },
+      { d: 'M100 150 m-50,0 a50,50 0 1,0 100,0 a50,50 0 1,0 -100,0', stroke: 'black', strokeWidth: 2, fill: 'none' },
+      { d: 'M100 150 m-30,0 a30,30 0 1,0 60,0 a30,30 0 1,0 -60,0', stroke: 'black', strokeWidth: 2, fill: 'none' },
+      { d: 'M70 90 L70 110', stroke: 'red', strokeWidth: 2, fill: 'none' },
+      { d: 'M100 90 V100', stroke: 'yellow', strokeWidth: 2, fill: 'none' },
+      { d: 'M130 90 L130 110', stroke: 'blue', strokeWidth: 2, fill: 'none' },
+      { d: 'M80 173 V210', stroke: 'red', strokeWidth: 2, fill: 'none' },
+      { d: 'M100 180 V210', stroke: 'yellow', strokeWidth: 2, fill: 'none' },
+      { d: 'M120 173 V210', stroke: 'blue', strokeWidth: 2, fill: 'none' },
+    ],
+    defaultProperties: {},
+    defaultConnectionPoints: [
+      { id: 'A', position: { x: 70, y: 34 }, type: 'input' },
+      { id: 'B', position: { x: 100, y: 34 }, type: 'input' },
+      { id: 'C', position: { x: 130, y: 34 }, type: 'input' },
+      { id: 'K', position: { x: 80, y: 267 }, type: 'output' },
+      { id: 'L', position: { x: 100, y: 267 }, type: 'output' },
+      { id: 'M', position: { x: 120, y: 267 }, type: 'output' },
+    ],
+  },
+
+  // MEASUREMENT DEVICES
+  {
+    type: SymbolType.AMMETER,
+    name: 'Ammeter',
+    category: 'Power',
+    viewBox: '0 0 200 100',
+    paths: [
+      { d: 'M20 50 H65', stroke: 'black', strokeWidth: 2, fill: 'none' },
+      { d: 'M100 50 m-35,0 a35,35 0 1,0 70,0 a35,35 0 1,0 -70,0', stroke: 'black', strokeWidth: 2, fill: 'none' },
+      { d: 'M135 50 H180', stroke: 'black', strokeWidth: 2, fill: 'none' },
+    ],
+    defaultProperties: {},
+    defaultConnectionPoints: [
+      { id: 'left', position: { x: 20, y: 50 }, type: 'input' },
+      { id: 'right', position: { x: 180, y: 50 }, type: 'output' },
+    ],
+  },
+  {
+    type: SymbolType.VOLTMETER,
+    name: 'Voltmeter',
+    category: 'Power',
+    viewBox: '0 0 200 100',
+    paths: [
+      { d: 'M20 50 H65', stroke: 'black', strokeWidth: 2, fill: 'none' },
+      { d: 'M100 50 m-35,0 a35,35 0 1,0 70,0 a35,35 0 1,0 -70,0', stroke: 'black', strokeWidth: 2, fill: 'none' },
+      { d: 'M135 50 H180', stroke: 'black', strokeWidth: 2, fill: 'none' },
+    ],
+    defaultProperties: {},
+    defaultConnectionPoints: [
+      { id: 'left', position: { x: 20, y: 50 }, type: 'input' },
+      { id: 'right', position: { x: 180, y: 50 }, type: 'output' },
+    ],
+  },
+  {
+    type: SymbolType.WATTMETER,
+    name: 'Wattmeter',
+    category: 'Power',
+    viewBox: '0 0 200 200',
+    paths: [
+      { d: 'M100 50 m-40,0 a40,40 0 1,0 80,0 a40,40 0 1,0 -80,0', stroke: 'black', strokeWidth: 2, fill: 'none' },
+      { d: 'M20 100 H60', stroke: 'black', strokeWidth: 2, fill: 'none' },
+      { d: 'M140 100 H180', stroke: 'black', strokeWidth: 2, fill: 'none' },
+      { d: 'M100 50 L100 90', stroke: 'black', strokeWidth: 2, fill: 'none' },
+      { d: 'M100 110 L100 150', stroke: 'black', strokeWidth: 2, fill: 'none' },
+      { d: 'M85 100 L115 100', stroke: 'black', strokeWidth: 2, fill: 'none' },
+      { d: 'M85 100 L115 100', stroke: 'black', strokeWidth: 2, fill: 'none' },
+      { d: 'M85 100 L115 100', stroke: 'black', strokeWidth: 2, fill: 'none' },
+      { d: 'M85 100 L115 100', stroke: 'black', strokeWidth: 2, fill: 'none' },
+    ],
+    defaultProperties: {},
+    defaultConnectionPoints: [
+      { id: 'left', position: { x: 20, y: 100 }, type: 'input' },
+      { id: 'right', position: { x: 180, y: 100 }, type: 'output' },
+    ],
+  },
+
+  // Add these to your catalog.ts file after the existing symbols
+
+// CONNECTIONS TO SUPPLY
+{
+  type: SymbolType.CONNECTIONS_TO_SUPPLY,
+  name: 'Connections to supply',
+  category: 'Power',
+  viewBox: '0 0 400 200',
+  paths: [
+    { d: 'M50 30 H300', stroke: '#cc0000', strokeWidth: 3, fill: 'none' },
+    { d: 'M50 60 H300', stroke: '#ff8800', strokeWidth: 3, fill: 'none' },
+    { d: 'M50 90 H300', stroke: '#0066cc', strokeWidth: 3, fill: 'none' },
+    { d: 'M50 120 H300', stroke: '#000000', strokeWidth: 3, fill: 'none' },
+    { d: 'M70 30 m-5,0 a5,5 0 1,0 10,0 a5,5 0 1,0 -10,0', fill: '#000' },
+    { d: 'M110 60 m-5,0 a5,5 0 1,0 10,0 a5,5 0 1,0 -10,0', fill: '#000' },
+    { d: 'M150 90 m-5,0 a5,5 0 1,0 10,0 a5,5 0 1,0 -10,0', fill: '#000' },
+    { d: 'M220 120 m-5,0 a5,5 0 1,0 10,0 a5,5 0 1,0 -10,0', fill: '#000' },
+    { d: 'M70 35 V190', stroke: '#cc0000', strokeWidth: 2, fill: 'none' },
+    { d: 'M110 65 V190', stroke: '#ff8800', strokeWidth: 2, fill: 'none' },
+    { d: 'M150 95 V190', stroke: '#0066cc', strokeWidth: 2, fill: 'none' },
+    { d: 'M220 120 V190', stroke: '#000000', strokeWidth: 2, fill: 'none' },
+  ],
+  defaultProperties: {},
+  defaultConnectionPoints: [
+    { id: 'L1', position: { x: 70, y: 30 }, type: 'input' },
+    { id: 'L2', position: { x: 110, y: 60 }, type: 'input' },
+    { id: 'L3', position: { x: 150, y: 90 }, type: 'input' },
+    { id: 'N', position: { x: 220, y: 120 }, type: 'input' },
+  ],
+},
+
+// ENERGY METER
+{
+  type: SymbolType.ENERGY_METER_KWH,
+  name: 'Energy meter (kilo Watt hour meter)',
+  category: 'Power',
+  viewBox: '0 0 200 200',
+  paths: [
+    { d: 'M40 40 H160 V160 H40 Z', stroke: '#000', strokeWidth: 2, fill: 'none' },
+    { d: 'M40 80 H160', stroke: '#000', strokeWidth: 2, fill: 'none' },
+  ],
+  defaultProperties: {},
+  defaultConnectionPoints: [
+    { id: 'input', position: { x: 40, y: 60 }, type: 'input' },
+    { id: 'output', position: { x: 160, y: 60 }, type: 'output' },
+  ],
+},
+
+// EARTH CONNECTION
+{
+  type: SymbolType.EARTH_CONNECTION,
+  name: 'Earth connection',
+  category: 'Power',
+  viewBox: '0 0 200 150',
+  paths: [
+    { d: 'M100 30 V90', stroke: '#006600', strokeWidth: 3, fill: 'none' },
+    { d: 'M70 90 H130', stroke: '#006600', strokeWidth: 3, fill: 'none' },
+    { d: 'M80 105 H120', stroke: '#006600', strokeWidth: 3, fill: 'none' },
+    { d: 'M90 120 H110', stroke: '#006600', strokeWidth: 3, fill: 'none' },
+  ],
+  defaultProperties: {},
+  defaultConnectionPoints: [
+    { id: 'top', position: { x: 100, y: 30 }, type: 'input' },
+  ],
+},
+
+// LAMP INCANDESCENT
+{
+  type: SymbolType.LAMP_INCANDESCENT_SYMBOL,
+  name: 'Lamp (incandescent)',
+  category: 'Power',
+  viewBox: '0 0 200 100',
+  paths: [
+    { d: 'M20 50 H65', stroke: '#000', strokeWidth: 2, fill: 'none' },
+    { d: 'M135 50 H180', stroke: '#000', strokeWidth: 2, fill: 'none' },
+    { d: 'M100 50 m-35,0 a35,35 0 1,0 70,0 a35,35 0 1,0 -70,0', stroke: '#000', strokeWidth: 2, fill: 'none' },
+    { d: 'M75 25 L125 75', stroke: '#000', strokeWidth: 2, fill: 'none' },
+    { d: 'M125 25 L75 75', stroke: '#000', strokeWidth: 2, fill: 'none' },
+  ],
+  defaultProperties: {},
+  defaultConnectionPoints: [
+    { id: 'left', position: { x: 20, y: 50 }, type: 'input' },
+    { id: 'right', position: { x: 180, y: 50 }, type: 'output' },
+  ],
+},
+
+// LAMP INDICATION
+{
+  type: SymbolType.LAMP_INDICATION_SYMBOL,
+  name: 'Lamp (indication)',
+  category: 'Power',
+  viewBox: '0 0 200 120',
+  paths: [
+    { d: 'M20 65 H65', stroke: '#000', strokeWidth: 2, fill: 'none' },
+    { d: 'M135 65 H180', stroke: '#000', strokeWidth: 2, fill: 'none' },
+    { d: 'M100 65 m-35,0 a35,35 0 1,0 70,0 a35,35 0 1,0 -70,0', stroke: '#000', strokeWidth: 2, fill: 'none' },
+    { d: 'M75 40 L125 90', stroke: '#000', strokeWidth: 2, fill: 'none' },
+    { d: 'M125 40 L75 90', stroke: '#000', strokeWidth: 2, fill: 'none' },
+  ],
+  defaultProperties: {},
+  defaultConnectionPoints: [
+    { id: 'left', position: { x: 20, y: 65 }, type: 'input' },
+    { id: 'right', position: { x: 180, y: 65 }, type: 'output' },
+  ],
+},
+
+// RESISTOR
+{
+  type: SymbolType.RESISTOR_SYMBOL,
+  name: 'Resistor',
+  category: 'Power',
+  viewBox: '0 0 300 80',
+  paths: [
+    { d: 'M30 40 m-6,0 a6,6 0 1,0 12,0 a6,6 0 1,0 -12,0', fill: '#000' },
+    { d: 'M36 40 H60', stroke: '#000', strokeWidth: 2, fill: 'none' },
+    { d: 'M60 40 L75 25 L90 55 L105 25 L120 55 L135 25 L150 55 L165 25 L180 40', stroke: '#000', strokeWidth: 2, fill: 'none' },
+    { d: 'M180 40 H204', stroke: '#000', strokeWidth: 2, fill: 'none' },
+    { d: 'M210 40 m-6,0 a6,6 0 1,0 12,0 a6,6 0 1,0 -12,0', fill: '#000' },
+  ],
+  defaultProperties: {},
+  defaultConnectionPoints: [
+    { id: 'left', position: { x: 30, y: 40 }, type: 'input' },
+    { id: 'right', position: { x: 210, y: 40 }, type: 'output' },
+  ],
+},
+
+// CAPACITOR
+{
+  type: SymbolType.CAPACITOR_SYMBOL,
+  name: 'Capacitor',
+  category: 'Power',
+  viewBox: '0 0 200 200',
+  paths: [
+    { d: 'M100 30 V80', stroke: '#000', strokeWidth: 3, fill: 'none' },
+    { d: 'M60 80 H140', stroke: '#000', strokeWidth: 3, fill: 'none' },
+    { d: 'M60 100 H140', stroke: '#000', strokeWidth: 3, fill: 'none' },
+    { d: 'M100 100 V150', stroke: '#000', strokeWidth: 3, fill: 'none' },
+  ],
+  defaultProperties: {},
+  defaultConnectionPoints: [
+    { id: 'top', position: { x: 100, y: 30 }, type: 'input' },
+    { id: 'bottom', position: { x: 100, y: 150 }, type: 'output' },
+  ],
+},
+
+// FUSE
+{
+  type: SymbolType.FUSE_SYMBOL,
+  name: 'Fuse',
+  category: 'Power',
+  viewBox: '0 0 200 250',
+  paths: [
+    { d: 'M100 30 V80', stroke: '#000', strokeWidth: 3, fill: 'none' },
+    { d: 'M80 80 H120 V170 H80 Z', stroke: '#000', strokeWidth: 3, fill: 'none' },
+    { d: 'M100 80 V170', stroke: '#000', strokeWidth: 3, fill: 'none' },
+    { d: 'M100 170 V220', stroke: '#000', strokeWidth: 3, fill: 'none' },
+  ],
+  defaultProperties: {},
+  defaultConnectionPoints: [
+    { id: 'top', position: { x: 100, y: 30 }, type: 'input' },
+    { id: 'bottom', position: { x: 100, y: 220 }, type: 'output' },
+  ],
+},
+
+// SWITCH SINGLE POLE
+{
+  type: SymbolType.SWITCH_SINGLE_POLE,
+  name: 'Switch (single pole)',
+  category: 'Power',
+  viewBox: '0 0 200 250',
+  paths: [
+    { d: 'M100 30 V80', stroke: '#000', strokeWidth: 3, fill: 'none' },
+    { d: 'M100 80 m-6,0 a6,6 0 1,0 12,0 a6,6 0 1,0 -12,0', fill: '#000' },
+    { d: 'M125 75 L100 160', stroke: '#000', strokeWidth: 3, fill: 'none' },
+    { d: 'M100 160 m-6,0 a6,6 0 1,0 12,0 a6,6 0 1,0 -12,0', fill: '#000' },
+    { d: 'M100 160 V220', stroke: '#000', strokeWidth: 3, fill: 'none' },
+  ],
+  defaultProperties: {},
+  defaultConnectionPoints: [
+    { id: 'top', position: { x: 100, y: 30 }, type: 'input' },
+    { id: 'bottom', position: { x: 100, y: 220 }, type: 'output' },
+  ],
+},
 ];

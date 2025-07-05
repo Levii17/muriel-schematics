@@ -46,7 +46,7 @@ const SymbolElement: React.FC<SymbolElementProps> = ({
     const CustomRenderer = catalogEntry.renderer;
     return (
       <Group x={position.x} y={position.y} rotation={rotation} scaleX={scale} scaleY={scale} onClick={onClick}>
-        <CustomRenderer selected={selected} properties={properties} />
+        <CustomRenderer selected={selected} {...properties} />
         {connectionPoints.map((cp) => (
           <Circle
             key={cp.id}

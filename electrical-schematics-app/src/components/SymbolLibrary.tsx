@@ -106,7 +106,13 @@ const SymbolLibrary: React.FC<SymbolLibraryProps> = ({
                 }}
               >
                 <ListItemIcon>
-                  <SymbolSVG paths={entry.paths} viewBox={entry.viewBox || '0 0 24 24'} />
+                  {entry.renderer ? (
+                    <span style={{ width: 32, height: 32, display: 'inline-block' }}>
+                      <entry.renderer {...entry.defaultProperties} />
+                    </span>
+                  ) : (
+                    <SymbolSVG paths={entry.paths} viewBox={entry.viewBox || '0 0 24 24'} />
+                  )}
                 </ListItemIcon>
                 <ListItemText primary={entry.name} />
               </ListItemButton>

@@ -1,7 +1,7 @@
 import React, { useMemo, useCallback } from 'react';
 import { useCanvasStore } from '../store/canvasStore';
 import { SymbolType, WireType, ElectricalSymbol, Wire, WireProperties } from '../types';
-import { TextField, Typography, Divider, Box, Button, MenuItem, InputLabel, FormControl, Select } from '@mui/material';
+import { TextField, Typography, Divider, Box, Button, MenuItem, InputLabel, FormControl, Select, Slider } from '@mui/material';
 import type { SelectChangeEvent } from '@mui/material/Select';
 
 const thicknessOptions = [1, 2, 3, 4, 5];
@@ -74,15 +74,52 @@ const PropertiesPanel: React.FC = React.memo(() => {
       }
       clearSelection();
     };
+    
     // Validation for thickness
     const thickness = item.properties?.thickness || 1;
     const thicknessError = isNaN(Number(thickness)) || Number(thickness) < 1 || Number(thickness) > 5;
+    
     return (
       <Box>
         <Typography variant="subtitle1" sx={{ mb: 1 }}>
           {isSymbol ? 'Symbol Properties' : 'Wire Properties'}
         </Typography>
         <Divider sx={{ mb: 2 }} />
+        
+        {/* Symbol-specific controls */}
+        {isSymbol && (
+          <>
+            <Typography variant="caption" sx={{ fontWeight: 600 }}>Size & Scale</Typography>
+            <Box sx={{ mb: 2 }}>
+              <Typography variant="body2" gutterBottom>
+                Scale: {Math.round((item as ElectricalSymbol).scale * 100)}%
+              </Typography>
+              <Slider
+                value={(item as ElectricalSymbol).scale}
+                onChange={(_, value) => updateSymbol(item.id, { scale: value as number })}
+                min={0.1}
+                max={3}
+                step={0.1}
+                marks={[
+                  { value: 0.1, label: '10%' },
+                  { value: 1, label: '100%' },
+                  { value: 3, label: '300%' }
+                ]}
+                valueLabelDisplay="auto"
+                sx={{ mt: 1 }}
+              />
+              <Button 
+                size="small" 
+                onClick={() => updateSymbol(item.id, { scale: 1 })}
+                sx={{ mt: 1 }}
+              >
+                Reset Scale
+              </Button>
+            </Box>
+            <Divider sx={{ mb: 2 }} />
+          </>
+        )}
+        
         {/* Appearance group */}
         <Typography variant="caption" sx={{ fontWeight: 600 }}>Appearance</Typography>
         <Box sx={{ mb: 2 }}>
@@ -122,6 +159,7 @@ const PropertiesPanel: React.FC = React.memo(() => {
             </Box>
           )}
         </Box>
+        
         {/* Electrical group */}
         <Typography variant="caption" sx={{ fontWeight: 600 }}>Electrical</Typography>
         <Box sx={{ mb: 2 }}>
@@ -142,6 +180,7 @@ const PropertiesPanel: React.FC = React.memo(() => {
             onChange={e => handleChange('rating', e.target.value)}
           />
         </Box>
+        
         <Button variant="outlined" size="small" color="secondary" sx={{ mt: 1, mr: 1 }} onClick={handleReset}>
           Reset to Default
         </Button>
@@ -157,12 +196,52 @@ const PropertiesPanel: React.FC = React.memo(() => {
     selectedSymbols.forEach(symbol => updateSymbol(symbol.id, { properties: { ...symbol.properties, [field]: value } }));
     selectedWires.forEach(wire => updateWire(wire.id, { properties: getWireProperties({ ...wire.properties, [field]: value }) }));
   };
+  
+  const handleBatchScale = (scale: number) => {
+    selectedSymbols.forEach(symbol => updateSymbol(symbol.id, { scale }));
+  };
+  
   return (
     <Box>
       <Typography variant="subtitle1" sx={{ mb: 1 }}>
-        Batch Edit Properties
+        Batch Edit Properties ({totalSelected} items)
       </Typography>
       <Divider sx={{ mb: 2 }} />
+      
+      {/* Batch scale control for symbols */}
+      {selectedSymbols.length > 0 && (
+        <>
+          <Typography variant="caption" sx={{ fontWeight: 600 }}>Size & Scale</Typography>
+          <Box sx={{ mb: 2 }}>
+            <Typography variant="body2" gutterBottom>
+              Scale: {Math.round(selectedSymbols[0].scale * 100)}%
+            </Typography>
+            <Slider
+              value={selectedSymbols[0].scale}
+              onChange={(_, value) => handleBatchScale(value as number)}
+              min={0.1}
+              max={3}
+              step={0.1}
+              marks={[
+                { value: 0.1, label: '10%' },
+                { value: 1, label: '100%' },
+                { value: 3, label: '300%' }
+              ]}
+              valueLabelDisplay="auto"
+              sx={{ mt: 1 }}
+            />
+            <Button 
+              size="small" 
+              onClick={() => handleBatchScale(1)}
+              sx={{ mt: 1 }}
+            >
+              Reset All Scales
+            </Button>
+          </Box>
+          <Divider sx={{ mb: 2 }} />
+        </>
+      )}
+      
       <Typography variant="caption" sx={{ fontWeight: 600 }}>Appearance</Typography>
       <Box sx={{ mb: 2 }}>
         <TextField

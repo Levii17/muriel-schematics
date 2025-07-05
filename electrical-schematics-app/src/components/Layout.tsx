@@ -44,6 +44,8 @@ const Layout: React.FC<{ children?: React.ReactNode }> = ({ children }) => {
   const undo = useCanvasStore((s) => s.undo);
   const redo = useCanvasStore((s) => s.redo);
   const setPan = useCanvasStore((s) => s.setPan);
+  const updateSymbol = useCanvasStore((s) => s.updateSymbol);
+  const symbols = useCanvasStore((s) => s.symbols);
   // Drag state for symbol drag-and-drop
   const [draggedSymbolType, setDraggedSymbolType] = useState<SymbolType | null>(null);
   const [dragPreviewPosition, setDragPreviewPosition] = useState<{ x: number; y: number } | null>(null);
@@ -70,10 +72,29 @@ const Layout: React.FC<{ children?: React.ReactNode }> = ({ children }) => {
       else if (e.key === 'h' || e.key === 'H') { setActiveTool('hand'); }
       else if (e.key === 'w' || e.key === 'W') { setActiveTool('wire'); }
       else if (e.key === 'Delete' || e.key === 'Backspace') { handleDelete(); }
+      // Symbol scaling shortcuts
+      else if (e.key === '[' || e.key === '{') { 
+        e.preventDefault(); 
+        selectedElements.forEach(id => {
+          const symbol = symbols.find((s: any) => s.id === id);
+          if (symbol) {
+            updateSymbol(id, { scale: Math.max(symbol.scale - 0.1, 0.1) });
+          }
+        });
+      }
+      else if (e.key === ']' || e.key === '}') { 
+        e.preventDefault(); 
+        selectedElements.forEach(id => {
+          const symbol = symbols.find((s: any) => s.id === id);
+          if (symbol) {
+            updateSymbol(id, { scale: Math.min(symbol.scale + 0.1, 3) });
+          }
+        });
+      }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [setActiveTool, handleDelete, undo, redo, setZoom, zoom]);
+  }, [setActiveTool, handleDelete, undo, redo, setZoom, zoom, selectedElements, symbols, updateSymbol]);
 
   return (
     <Box sx={{ display: 'flex', height: '100vh', bgcolor: '#f4f6fa' }}>
@@ -153,6 +174,23 @@ const Layout: React.FC<{ children?: React.ReactNode }> = ({ children }) => {
           <Typography variant="body2" sx={{ mx: 1 }}>{Math.round(zoom * 100)}%</Typography>
           <Tooltip title="Zoom In (Ctrl+=)"><IconButton onClick={() => setZoom(Math.min(zoom + 0.1, 2))}><ZoomInIcon /></IconButton></Tooltip>
           <Tooltip title="Reset View"><IconButton onClick={() => { setZoom(1); setPan({ x: 0, y: 0 }); }}><CenterFocusStrongIcon /></IconButton></Tooltip>
+          <Divider orientation="vertical" flexItem sx={{ mx: 1 }} />
+          <Tooltip title="Scale Down Selected ([)"><IconButton onClick={() => {
+            selectedElements.forEach(id => {
+              const symbol = symbols.find((s: any) => s.id === id);
+              if (symbol) {
+                updateSymbol(id, { scale: Math.max(symbol.scale - 0.1, 0.1) });
+              }
+            });
+          }}><Typography variant="body2">[</Typography></IconButton></Tooltip>
+          <Tooltip title="Scale Up Selected (])"><IconButton onClick={() => {
+            selectedElements.forEach(id => {
+              const symbol = symbols.find((s: any) => s.id === id);
+              if (symbol) {
+                updateSymbol(id, { scale: Math.min(symbol.scale + 0.1, 3) });
+              }
+            });
+          }}><Typography variant="body2">]</Typography></IconButton></Tooltip>
         </Paper>
         {/* Canvas Area */}
         <Box sx={{ flex: 1, display: 'flex', minHeight: 0 }}>

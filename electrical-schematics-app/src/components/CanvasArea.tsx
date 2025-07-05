@@ -310,17 +310,25 @@ const CanvasArea: React.FC<CanvasAreaProps> = ({ wireToolActive, selectToolActiv
 
   const renderSymbols = () =>
     symbols.map((symbol) => (
-      <SymbolElement
+      <Group
         key={symbol.id}
-        type={symbol.type}
-        position={symbol.position}
-        rotation={symbol.rotation}
-        scale={symbol.scale}
-        selected={selectedElements.includes(symbol.id)}
-        properties={symbol.properties}
-        connections={symbol.connections}
+        draggable={selectToolActive || handToolActive}
+        onDragEnd={e => {
+          const { x, y } = e.target.position();
+          moveSymbol(symbol.id, { x, y });
+        }}
         onClick={() => handleSymbolClick(symbol.id)}
-      />
+      >
+        <SymbolElement
+          type={symbol.type}
+          position={symbol.position}
+          rotation={symbol.rotation}
+          scale={symbol.scale}
+          selected={selectedElements.includes(symbol.id)}
+          properties={symbol.properties}
+          connections={symbol.connections}
+        />
+      </Group>
     ));
 
   // Draw title block grid lines

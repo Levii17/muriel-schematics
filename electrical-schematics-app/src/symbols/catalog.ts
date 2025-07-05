@@ -11,6 +11,11 @@ export interface SymbolCatalogEntry {
   renderer?: React.FC<any>;
   defaultProperties: Record<string, any>;
   defaultConnectionPoints: Omit<ConnectionPoint, 'connected' | 'connectionId'>[];
+  // New fields for better appearance control
+  displaySize?: { width: number; height: number };
+  strokeWidth?: number;
+  connectionPointRadius?: number;
+  selectionStrokeWidth?: number;
 }
 
 export const symbolCatalog: SymbolCatalogEntry[] = [
@@ -27,7 +32,11 @@ export const symbolCatalog: SymbolCatalogEntry[] = [
     defaultConnectionPoints: [
       { id: 'cp1', position: { x: 4, y: 12 }, type: 'input' },
       { id: 'cp2', position: { x: 20, y: 12 }, type: 'output' }
-    ]
+    ],
+    displaySize: { width: 40, height: 24 },
+    strokeWidth: 2,
+    connectionPointRadius: 6,
+    selectionStrokeWidth: 3
   },
   {
     type: SymbolType.PHASE_L2,
@@ -41,7 +50,11 @@ export const symbolCatalog: SymbolCatalogEntry[] = [
     defaultConnectionPoints: [
       { id: 'cp1', position: { x: 4, y: 12 }, type: 'input' },
       { id: 'cp2', position: { x: 20, y: 12 }, type: 'output' }
-    ]
+    ],
+    displaySize: { width: 40, height: 24 },
+    strokeWidth: 2,
+    connectionPointRadius: 6,
+    selectionStrokeWidth: 3
   },
   {
     type: SymbolType.PHASE_L3,
@@ -184,6 +197,10 @@ export const symbolCatalog: SymbolCatalogEntry[] = [
       { id: 'top', position: { x: 100, y: 20 }, type: 'input' },
       { id: 'bottom', position: { x: 100, y: 280 }, type: 'output' },
     ],
+    displaySize: { width: 80, height: 120 },
+    strokeWidth: 2,
+    connectionPointRadius: 8,
+    selectionStrokeWidth: 4
   },
   {
     type: SymbolType.CIRCUIT_BREAKER_DOUBLE_POLE,
@@ -608,6 +625,10 @@ export const symbolCatalog: SymbolCatalogEntry[] = [
       { id: 'left', position: { x: 20, y: 50 }, type: 'input' },
       { id: 'right', position: { x: 180, y: 50 }, type: 'output' },
     ],
+    displaySize: { width: 80, height: 40 },
+    strokeWidth: 2,
+    connectionPointRadius: 6,
+    selectionStrokeWidth: 3
   },
   {
     type: SymbolType.MOTOR_THREE_PHASE_DOL,

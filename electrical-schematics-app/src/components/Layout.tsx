@@ -33,6 +33,8 @@ import SettingsIcon from '@mui/icons-material/Settings';
 import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh';
 import { Switch } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
+import { symbolCatalog } from '../symbols/catalog';
+import SymbolSVG from './SymbolSVG'; // For fallback rendering
 
 const drawerWidth = 260;
 
@@ -196,11 +198,11 @@ const Layout: React.FC<{ children?: React.ReactNode }> = ({ children }) => {
       {/* Top AppBar */}
       <AppBar position="fixed" color="primary" sx={{ zIndex: (theme) => theme.zIndex.drawer + 1 }}>
         <Toolbar sx={{ minHeight: 56 }}>
-          <Box sx={{ width: 40, height: 40, mr: 2, display: 'flex', alignItems: 'center' }}>
-            <img src="/logo192.png" alt="Muriel Logo" style={{ height: 36 }} />
+          <Box sx={{ width: 60, height: 60, mr: 1, display: 'flex', alignItems: 'center' }}>
+            <img src="/logo512.png" alt="Muriel Logo" style={{ height: 65 }} />
           </Box>
           <Typography variant="h6" noWrap component="div" sx={{ flexGrow: 1 }}>
-            Muriel Schematics
+            schematics
           </Typography>
           {/* Action buttons */}
           <IconButton color="inherit" size="large"><SaveIcon /></IconButton>

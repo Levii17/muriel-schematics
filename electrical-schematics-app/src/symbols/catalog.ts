@@ -764,6 +764,10 @@ export const symbolCatalog: SymbolCatalogEntry[] = [
       { id: 'left', position: { x: 20, y: 50 }, type: 'input' },
       { id: 'right', position: { x: 180, y: 50 }, type: 'output' },
     ],
+    displaySize: { width: 200, height: 100 },
+    strokeWidth: 2,
+    connectionPointRadius: 3,
+    selectionStrokeWidth: 3
   },
   {
     type: SymbolType.VOLTMETER,
@@ -776,6 +780,10 @@ export const symbolCatalog: SymbolCatalogEntry[] = [
       { id: 'left', position: { x: 20, y: 50 }, type: 'input' },
       { id: 'right', position: { x: 180, y: 50 }, type: 'output' },
     ],
+    displaySize: { width: 200, height: 100 },
+    strokeWidth: 2,
+    connectionPointRadius: 3,
+    selectionStrokeWidth: 3
   },
   {
     type: SymbolType.WATTMETER,
@@ -788,6 +796,10 @@ export const symbolCatalog: SymbolCatalogEntry[] = [
       { id: 'left', position: { x: 20, y: 100 }, type: 'input' },
       { id: 'right', position: { x: 180, y: 100 }, type: 'output' },
     ],
+    displaySize: { width: 200, height: 200 },
+    strokeWidth: 2,
+    connectionPointRadius: 3,
+    selectionStrokeWidth: 3
   },
 
   // Add these to your catalog.ts file after the existing symbols

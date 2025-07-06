@@ -8,6 +8,7 @@ import MenuItem from '@mui/material/MenuItem';
 import InputLabel from '@mui/material/InputLabel';
 import Box from '@mui/material/Box';
 import Tooltip from '@mui/material/Tooltip';
+import SymbolSVG from './SymbolSVG';
 
 interface SymbolLibraryProps {
   draggedSymbolType: SymbolType | null;
@@ -15,26 +16,6 @@ interface SymbolLibraryProps {
   setDragPreviewPosition: (pos: { x: number; y: number } | null) => void;
   search?: string;
 }
-
-const SymbolSVG: React.FC<{ paths?: { d: string; stroke?: string; strokeWidth?: number; fill?: string }[]; viewBox?: string }> = ({ paths, viewBox = "0 0 24 24" }) => (
-  <svg width={48} height={48} viewBox={viewBox} style={{ display: 'block', margin: '0 auto' }}>
-    {paths && paths.length > 0 ? (
-      paths.map((p, i) => (
-        <path
-          key={i}
-          d={p.d}
-          stroke={p.stroke || "#222"}
-          strokeWidth={p.strokeWidth ?? 1.5}
-          fill={p.fill || "none"}
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-      ))
-    ) : (
-      <path d="M4 4 L20 20 M20 4 L4 20" stroke="red" strokeWidth={2} />
-    )}
-  </svg>
-);
 
 const SymbolLibrary: React.FC<SymbolLibraryProps> = ({
   draggedSymbolType,
@@ -70,9 +51,7 @@ const SymbolLibrary: React.FC<SymbolLibraryProps> = ({
 
     // Add global pointer event listeners
     const handlePointerMove = (e: PointerEvent) => {
-      if (isDragging) {
-        setDragPreviewPosition({ x: e.clientX, y: e.clientY });
-      }
+      setDragPreviewPosition({ x: e.clientX, y: e.clientY });
     };
 
     const handlePointerUp = (e: PointerEvent) => {
@@ -92,15 +71,7 @@ const SymbolLibrary: React.FC<SymbolLibraryProps> = ({
 
     // Prevent text selection during drag
     e.preventDefault();
-  }, [draggedSymbolType, isDragging, setDraggedSymbolType, setDragPreviewPosition]);
-
-  // Check if drag should start (move threshold)
-  const shouldStartDrag = useCallback((startPos: { x: number; y: number }, currentPos: { x: number; y: number }) => {
-    const threshold = 5; // pixels
-    const dx = Math.abs(currentPos.x - startPos.x);
-    const dy = Math.abs(currentPos.y - startPos.y);
-    return dx > threshold || dy > threshold;
-  }, []);
+  }, [draggedSymbolType, setDraggedSymbolType, setDragPreviewPosition]);
 
   return (
     <Paper elevation={1} sx={{ p: 1 }}>

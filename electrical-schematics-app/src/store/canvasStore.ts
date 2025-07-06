@@ -11,8 +11,6 @@ import {
   WireProperties,
   ConnectionPoint,
   TextElement,
-  DimensionElement,
-  MeasurementResult,
   ToolType,
   ValidationResult
 } from '../types';
@@ -36,11 +34,6 @@ interface CanvasStore extends Omit<CanvasState, 'autoSave'> {
   updateTextElement: (id: string, updates: Partial<TextElement>) => void;
   deleteTextElement: (id: string) => void;
   
-  // Dimension elements
-  addDimensionElement: (dimensionElement: Omit<DimensionElement, 'id'>) => void;
-  updateDimensionElement: (id: string, updates: Partial<DimensionElement>) => void;
-  deleteDimensionElement: (id: string) => void;
-  
   selectElement: (id: string) => void;
   selectMultipleElements: (ids: string[]) => void;
   selectAll: () => void;
@@ -51,14 +44,7 @@ interface CanvasStore extends Omit<CanvasState, 'autoSave'> {
   setGridSize: (size: number) => void;
   toggleSnapToGrid: () => void;
   setActiveTool: (tool: ToolType) => void;
-  setMeasurementUnit: (unit: 'mm' | 'cm' | 'm' | 'in' | 'ft') => void;
-  toggleShowMeasurements: () => void;
   toggleAutoSave: () => void;
-  
-  // Measurement tools
-  measureDistance: (startPoint: Point, endPoint: Point) => MeasurementResult;
-  measureAngle: (center: Point, point1: Point, point2: Point) => number;
-  measureArea: (points: Point[]) => number;
   
   // Undo/Redo
   undo: () => void;
@@ -146,15 +132,12 @@ export const useCanvasStore = create<CanvasStore>()(
       symbols: [],
       wires: [],
       textElements: [],
-      dimensionElements: [],
       selectedElements: [],
-      zoom: 1,
+      zoom: 0.5,
       pan: { x: 0, y: 0 },
       gridSize: 20,
       snapToGrid: true,
       activeTool: ToolType.SELECT,
-      measurementUnit: 'mm',
-      showMeasurements: false,
       autoSave: true,
       lastSaved: null,
       past: [],
@@ -162,8 +145,8 @@ export const useCanvasStore = create<CanvasStore>()(
 
       _getSnapshot() {
         const state = get();
-        const { symbols, wires, textElements, dimensionElements, selectedElements, zoom, pan, gridSize, snapToGrid, activeTool, measurementUnit, showMeasurements } = state;
-        return { symbols, wires, textElements, dimensionElements, selectedElements, zoom, pan, gridSize, snapToGrid, activeTool, measurementUnit, showMeasurements };
+        const { symbols, wires, textElements, selectedElements, zoom, pan, gridSize, snapToGrid, activeTool } = state;
+        return { symbols, wires, textElements, selectedElements, zoom, pan, gridSize, snapToGrid, activeTool };
       },
       _pushToHistory() {
         const snapshot = get()._getSnapshot();
@@ -313,31 +296,6 @@ export const useCanvasStore = create<CanvasStore>()(
         }));
       },
 
-      // Dimension element actions
-      addDimensionElement: (dimensionElement) => {
-        get()._pushToHistory();
-        set((state) => ({
-          dimensionElements: [...state.dimensionElements, { ...dimensionElement, id: generateId() }]
-        }));
-      },
-
-      updateDimensionElement: (id, updates) => {
-        get()._pushToHistory();
-        set((state) => ({
-          dimensionElements: state.dimensionElements.map(el => 
-            el.id === id ? { ...el, ...updates } : el
-          )
-        }));
-      },
-
-      deleteDimensionElement: (id) => {
-        get()._pushToHistory();
-        set((state) => ({
-          dimensionElements: state.dimensionElements.filter(el => el.id !== id),
-          selectedElements: state.selectedElements.filter(selectedId => selectedId !== id)
-        }));
-      },
-
       // Selection actions
       selectElement: (id: string) => {
         set((state) => ({
@@ -356,8 +314,7 @@ export const useCanvasStore = create<CanvasStore>()(
           selectedElements: [
             ...state.symbols.map(s => s.id),
             ...state.wires.map(w => w.id),
-            ...state.textElements.map(t => t.id),
-            ...state.dimensionElements.map(d => d.id)
+            ...state.textElements.map(t => t.id)
           ]
         }));
       },
@@ -389,44 +346,8 @@ export const useCanvasStore = create<CanvasStore>()(
         set({ activeTool: tool });
       },
 
-      setMeasurementUnit: (unit: 'mm' | 'cm' | 'm' | 'in' | 'ft') => {
-        set({ measurementUnit: unit });
-      },
-
-      toggleShowMeasurements: () => {
-        set((state) => ({ showMeasurements: !state.showMeasurements }));
-      },
-
       toggleAutoSave: () => {
         set((state) => ({ autoSave: !state.autoSave }));
-      },
-
-      // Measurement tools
-      measureDistance: (startPoint: Point, endPoint: Point): MeasurementResult => {
-        const distance = Math.hypot(endPoint.x - startPoint.x, endPoint.y - startPoint.y);
-        return {
-          distance,
-          unit: 'mm'
-        };
-      },
-
-      measureAngle: (center: Point, point1: Point, point2: Point): number => {
-        const angle1 = Math.atan2(point1.y - center.y, point1.x - center.x);
-        const angle2 = Math.atan2(point2.y - center.y, point2.x - center.x);
-        let angle = (angle2 - angle1) * 180 / Math.PI;
-        if (angle < 0) angle += 360;
-        return angle;
-      },
-
-      measureArea: (points: Point[]): number => {
-        if (points.length < 3) return 0;
-        let area = 0;
-        for (let i = 0; i < points.length; i++) {
-          const j = (i + 1) % points.length;
-          area += points[i].x * points[j].y;
-          area -= points[j].x * points[i].y;
-        }
-        return Math.abs(area) / 2;
       },
 
       // Undo/Redo
@@ -535,7 +456,6 @@ export const useCanvasStore = create<CanvasStore>()(
           symbols: [],
           wires: [],
           textElements: [],
-          dimensionElements: [],
           selectedElements: []
         }));
         get()._pushToHistory();
@@ -546,7 +466,6 @@ export const useCanvasStore = create<CanvasStore>()(
         const newSymbols: ElectricalSymbol[] = [];
         const newWires: Wire[] = [];
         const newTextElements: TextElement[] = [];
-        const newDimensionElements: DimensionElement[] = [];
         const newSelectedElements: string[] = [];
 
         // Duplicate selected symbols
@@ -584,25 +503,12 @@ export const useCanvasStore = create<CanvasStore>()(
             newTextElements.push(newTextElement);
             newSelectedElements.push(newTextElement.id);
           }
-
-          const dimensionElement = state.dimensionElements.find(d => d.id === id);
-          if (dimensionElement) {
-            const newDimensionElement = {
-              ...dimensionElement,
-              id: generateId(),
-              startPoint: { x: dimensionElement.startPoint.x + 50, y: dimensionElement.startPoint.y + 50 },
-              endPoint: { x: dimensionElement.endPoint.x + 50, y: dimensionElement.endPoint.y + 50 }
-            };
-            newDimensionElements.push(newDimensionElement);
-            newSelectedElements.push(newDimensionElement.id);
-          }
         });
 
         set((state) => ({
           symbols: [...state.symbols, ...newSymbols],
           wires: [...state.wires, ...newWires],
           textElements: [...state.textElements, ...newTextElements],
-          dimensionElements: [...state.dimensionElements, ...newDimensionElements],
           selectedElements: newSelectedElements
         }));
 

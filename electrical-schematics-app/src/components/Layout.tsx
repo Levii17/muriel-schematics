@@ -29,10 +29,10 @@ import Tooltip from '@mui/material/Tooltip';
 import CenterFocusStrongIcon from '@mui/icons-material/CenterFocusStrong';
 import { SymbolType, ToolType } from '../types';
 import TextFieldsIcon from '@mui/icons-material/TextFields';
-import StraightenIcon from '@mui/icons-material/Straighten';
 import SettingsIcon from '@mui/icons-material/Settings';
 import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh';
-import { FormControl, Select, MenuItem, Switch } from '@mui/material';
+import { Switch } from '@mui/material';
+import SearchIcon from '@mui/icons-material/Search';
 
 const drawerWidth = 260;
 
@@ -41,7 +41,6 @@ const Layout: React.FC<{ children?: React.ReactNode }> = ({ children }) => {
   const deleteSymbol = useCanvasStore((s) => s.deleteSymbol);
   const deleteWire = useCanvasStore((s) => s.deleteWire);
   const deleteTextElement = useCanvasStore((s) => s.deleteTextElement);
-  const deleteDimensionElement = useCanvasStore((s) => s.deleteDimensionElement);
   const selectedElements = useCanvasStore((s) => s.selectedElements);
   const clearSelection = useCanvasStore((s) => s.clearSelection);
   const [showGrid, setShowGrid] = useState(true);
@@ -51,13 +50,8 @@ const Layout: React.FC<{ children?: React.ReactNode }> = ({ children }) => {
   const undo = useCanvasStore((s) => s.undo);
   const redo = useCanvasStore((s) => s.redo);
   const setPan = useCanvasStore((s) => s.setPan);
-  const updateSymbol = useCanvasStore((s) => s.updateSymbol);
   const symbols = useCanvasStore((s) => s.symbols);
   const setActiveToolStore = useCanvasStore((s) => s.setActiveTool);
-  const showMeasurements = useCanvasStore((s) => s.showMeasurements);
-  const toggleShowMeasurements = useCanvasStore((s) => s.toggleShowMeasurements);
-  const measurementUnit = useCanvasStore((s) => s.measurementUnit);
-  const setMeasurementUnit = useCanvasStore((s) => s.setMeasurementUnit);
   const autoSave = useCanvasStore((s) => s.autoSave);
   const toggleAutoSave = useCanvasStore((s) => s.toggleAutoSave);
   const validateSchematic = useCanvasStore((s) => s.validateSchematic);
@@ -81,7 +75,6 @@ const Layout: React.FC<{ children?: React.ReactNode }> = ({ children }) => {
       deleteSymbol(id);
       deleteWire(id);
       deleteTextElement(id);
-      deleteDimensionElement(id);
     });
     clearSelection();
   };
@@ -127,14 +120,6 @@ const Layout: React.FC<{ children?: React.ReactNode }> = ({ children }) => {
           case '4':
             e.preventDefault();
             handleToolChange(ToolType.TEXT);
-            break;
-          case '5':
-            e.preventDefault();
-            handleToolChange(ToolType.DIMENSION);
-            break;
-          case '6':
-            e.preventDefault();
-            handleToolChange(ToolType.MEASURE);
             break;
           case 'z':
             e.preventDefault();
@@ -243,12 +228,23 @@ const Layout: React.FC<{ children?: React.ReactNode }> = ({ children }) => {
           </Typography>
           <Paper
             component="form"
-            sx={{ p: '2px 4px', display: 'flex', alignItems: 'center', mb: 2 }}
+            sx={{
+              p: '2px 8px',
+              display: 'flex',
+              alignItems: 'center',
+              mb: 2,
+              boxShadow: 2,
+              borderRadius: 2,
+              background: '#f8fafc',
+              transition: 'box-shadow 0.2s',
+              '&:focus-within': { boxShadow: 4 },
+            }}
             elevation={0}
             onSubmit={e => e.preventDefault()}
           >
+            <SearchIcon sx={{ color: 'action.active', mr: 1, ml: 0.5 }} />
             <InputBase
-              sx={{ ml: 1, flex: 1 }}
+              sx={{ flex: 1, fontSize: 15, background: 'transparent' }}
               placeholder="Search symbols..."
               inputProps={{ 'aria-label': 'search symbols' }}
               value={symbolSearch}
@@ -305,22 +301,6 @@ const Layout: React.FC<{ children?: React.ReactNode }> = ({ children }) => {
               <TextFieldsIcon />
             </IconButton>
           </Tooltip>
-          <Tooltip title="Dimension Tool (D)">
-            <IconButton 
-              color={activeTool === ToolType.DIMENSION ? 'primary' : 'default'} 
-              onClick={() => handleToolChange(ToolType.DIMENSION)}
-            >
-              <StraightenIcon />
-            </IconButton>
-          </Tooltip>
-          <Tooltip title="Measure Tool (M)">
-            <IconButton 
-              color={activeTool === ToolType.MEASURE ? 'primary' : 'default'} 
-              onClick={() => handleToolChange(ToolType.MEASURE)}
-            >
-              <CenterFocusStrongIcon />
-            </IconButton>
-          </Tooltip>
           
           <Divider orientation="vertical" flexItem sx={{ mx: 1 }} />
           
@@ -352,11 +332,6 @@ const Layout: React.FC<{ children?: React.ReactNode }> = ({ children }) => {
           <Tooltip title="Toggle Snap to Grid">
             <IconButton color={snapToGrid ? 'primary' : 'default'} onClick={() => setSnapToGrid(v => !v)}>
               <GridOnIcon sx={{ opacity: 0.5 }} />
-            </IconButton>
-          </Tooltip>
-          <Tooltip title="Toggle Measurements">
-            <IconButton color={showMeasurements ? 'primary' : 'default'} onClick={toggleShowMeasurements}>
-              <StraightenIcon sx={{ opacity: 0.7 }} />
             </IconButton>
           </Tooltip>
           
@@ -414,21 +389,6 @@ const Layout: React.FC<{ children?: React.ReactNode }> = ({ children }) => {
           <Paper elevation={1} sx={{ p: 2, mb: 1 }}>
             <Typography variant="h6" gutterBottom>Settings</Typography>
             <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', mb: 2 }}>
-              <Typography>Measurement Unit:</Typography>
-              <FormControl size="small">
-                <Select
-                  value={measurementUnit}
-                  onChange={(e) => setMeasurementUnit(e.target.value as any)}
-                >
-                  <MenuItem value="mm">mm</MenuItem>
-                  <MenuItem value="cm">cm</MenuItem>
-                  <MenuItem value="m">m</MenuItem>
-                  <MenuItem value="in">in</MenuItem>
-                  <MenuItem value="ft">ft</MenuItem>
-                </Select>
-              </FormControl>
-            </Box>
-            <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
               <Typography>Auto-save:</Typography>
               <Switch checked={autoSave} onChange={() => toggleAutoSave()} />
             </Box>
@@ -442,15 +402,13 @@ const Layout: React.FC<{ children?: React.ReactNode }> = ({ children }) => {
             selectToolActive={activeTool === ToolType.SELECT}
             handToolActive={activeTool === ToolType.HAND}
             textToolActive={activeTool === ToolType.TEXT}
-            dimensionToolActive={activeTool === ToolType.DIMENSION}
-            measureToolActive={activeTool === ToolType.MEASURE}
             showGrid={showGrid}
             snapToGrid={snapToGrid}
             draggedSymbolType={draggedSymbolType}
             dragPreviewPosition={dragPreviewPosition}
             setDragPreviewPosition={setDragPreviewPosition}
+            setDraggedSymbolType={setDraggedSymbolType}
           />
-          <PropertiesPanel />
         </Box>
       </Box>
       {/* Properties Panel */}

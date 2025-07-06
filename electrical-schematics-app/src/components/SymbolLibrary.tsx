@@ -1,12 +1,13 @@
-import React, { useEffect } from 'react';
-import List from '@mui/material/List';
-import ListItemButton from '@mui/material/ListItemButton';
-import ListItemIcon from '@mui/material/ListItemIcon';
-import ListItemText from '@mui/material/ListItemText';
+import React, { useState, useCallback } from 'react';
 import Paper from '@mui/material/Paper';
-import ListSubheader from '@mui/material/ListSubheader';
 import { symbolCatalog } from '../symbols/catalog';
 import { SymbolType } from '../types';
+import FormControl from '@mui/material/FormControl';
+import Select from '@mui/material/Select';
+import MenuItem from '@mui/material/MenuItem';
+import InputLabel from '@mui/material/InputLabel';
+import Box from '@mui/material/Box';
+import Tooltip from '@mui/material/Tooltip';
 
 interface SymbolLibraryProps {
   draggedSymbolType: SymbolType | null;
@@ -16,7 +17,7 @@ interface SymbolLibraryProps {
 }
 
 const SymbolSVG: React.FC<{ paths?: { d: string; stroke?: string; strokeWidth?: number; fill?: string }[]; viewBox?: string }> = ({ paths, viewBox = "0 0 24 24" }) => (
-  <svg width={32} height={32} viewBox={viewBox} style={{ display: 'block' }}>
+  <svg width={48} height={48} viewBox={viewBox} style={{ display: 'block', margin: '0 auto' }}>
     {paths && paths.length > 0 ? (
       paths.map((p, i) => (
         <path
@@ -30,7 +31,6 @@ const SymbolSVG: React.FC<{ paths?: { d: string; stroke?: string; strokeWidth?: 
         />
       ))
     ) : (
-      // Fallback: render an X if no paths
       <path d="M4 4 L20 20 M20 4 L4 20" stroke="red" strokeWidth={2} />
     )}
   </svg>
@@ -42,84 +42,141 @@ const SymbolLibrary: React.FC<SymbolLibraryProps> = ({
   setDragPreviewPosition,
   search = '',
 }) => {
-  useEffect(() => {
-    if (!draggedSymbolType) return;
-    const handleMouseMove = (e: MouseEvent) => {
-      setDragPreviewPosition({ x: e.clientX, y: e.clientY });
-    };
-    document.addEventListener('mousemove', handleMouseMove);
-    return () => {
-      document.removeEventListener('mousemove', handleMouseMove);
-      setDragPreviewPosition(null);
-    };
-  }, [draggedSymbolType, setDragPreviewPosition]);
+  const [selectedCategory, setSelectedCategory] = useState<string>('All');
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragStartPos, setDragStartPos] = useState<{ x: number; y: number } | null>(null);
 
   const searchLower = search.trim().toLowerCase();
   const filteredCatalog = symbolCatalog.filter(entry =>
-    entry.name.toLowerCase().includes(searchLower) ||
-    entry.type.toLowerCase().includes(searchLower)
+    (entry.name.toLowerCase().includes(searchLower) ||
+      entry.type.toLowerCase().includes(searchLower)) &&
+    (selectedCategory === 'All' || entry.category === selectedCategory)
   );
 
-  // Group filtered symbols by category
-  const symbolsByCategory: { [category: string]: typeof filteredCatalog } = {};
-  filteredCatalog.forEach(entry => {
-    if (!symbolsByCategory[entry.category]) symbolsByCategory[entry.category] = [];
-    symbolsByCategory[entry.category].push(entry);
-  });
-  const sortedCategories = Object.keys(symbolsByCategory).sort();
+  const allCategories = Array.from(new Set(symbolCatalog.map(s => s.category))).sort();
 
-  const handleDragStart = (e: React.DragEvent, symbolType: SymbolType) => {
+  // Custom drag handlers using pointer events
+  const handlePointerDown = useCallback((e: React.PointerEvent, symbolType: SymbolType) => {
     if (draggedSymbolType) {
       e.preventDefault();
       return;
     }
+
+    // Set initial drag state
+    setIsDragging(true);
+    setDragStartPos({ x: e.clientX, y: e.clientY });
     setDraggedSymbolType(symbolType);
     setDragPreviewPosition({ x: e.clientX, y: e.clientY });
-    e.dataTransfer.setData('application/x-symbol-type', symbolType);
-    e.dataTransfer.effectAllowed = 'copy';
-  };
 
-  const handleDragEnd = () => {
-    setDraggedSymbolType(null);
-    setDragPreviewPosition(null);
-  };
+    // Add global pointer event listeners
+    const handlePointerMove = (e: PointerEvent) => {
+      if (isDragging) {
+        setDragPreviewPosition({ x: e.clientX, y: e.clientY });
+      }
+    };
+
+    const handlePointerUp = (e: PointerEvent) => {
+      setIsDragging(false);
+      setDragStartPos(null);
+      setDraggedSymbolType(null);
+      setDragPreviewPosition(null);
+      
+      // Remove global listeners
+      document.removeEventListener('pointermove', handlePointerMove);
+      document.removeEventListener('pointerup', handlePointerUp);
+    };
+
+    // Add global listeners
+    document.addEventListener('pointermove', handlePointerMove);
+    document.addEventListener('pointerup', handlePointerUp);
+
+    // Prevent text selection during drag
+    e.preventDefault();
+  }, [draggedSymbolType, isDragging, setDraggedSymbolType, setDragPreviewPosition]);
+
+  // Check if drag should start (move threshold)
+  const shouldStartDrag = useCallback((startPos: { x: number; y: number }, currentPos: { x: number; y: number }) => {
+    const threshold = 5; // pixels
+    const dx = Math.abs(currentPos.x - startPos.x);
+    const dy = Math.abs(currentPos.y - startPos.y);
+    return dx > threshold || dy > threshold;
+  }, []);
 
   return (
     <Paper elevation={1} sx={{ p: 1 }}>
-      <List dense>
-        {sortedCategories.length === 0 && (
-          <ListSubheader>No symbols found.</ListSubheader>
-        )}
-        {sortedCategories.map(category => (
-          <React.Fragment key={category}>
-            <ListSubheader>{category}</ListSubheader>
-            {symbolsByCategory[category].map((entry) => (
-              <ListItemButton
-                key={entry.type + entry.name}
-                draggable={!draggedSymbolType || draggedSymbolType === entry.type}
-                onDragStart={(e) => handleDragStart(e, entry.type)}
-                onDragEnd={handleDragEnd}
+      <FormControl fullWidth size="small" sx={{ mb: 1 }}>
+        <InputLabel id="symbol-category-label">Category</InputLabel>
+        <Select
+          labelId="symbol-category-label"
+          value={selectedCategory}
+          label="Category"
+          onChange={e => setSelectedCategory(e.target.value)}
+        >
+          <MenuItem value="All">All</MenuItem>
+          {allCategories.map(cat => (
+            <MenuItem key={cat} value={cat}>{cat}</MenuItem>
+          ))}
+        </Select>
+      </FormControl>
+      <Box sx={{ flexGrow: 1 }}>
+        <Box sx={{ 
+          display: 'grid', 
+          gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))',
+          gap: 2,
+          p: 1
+        }}>
+          {filteredCatalog.length === 0 && (
+            <Box sx={{ 
+              gridColumn: '1 / -1',
+              textAlign: 'center', 
+              color: 'text.secondary', 
+              py: 4 
+            }}>
+              No symbols found.
+            </Box>
+          )}
+          {filteredCatalog.map((entry) => (
+            <Tooltip title={entry.name} arrow key={entry.type + entry.name}>
+              <Paper
+                elevation={draggedSymbolType === entry.type ? 6 : 2}
+                onPointerDown={(e) => handlePointerDown(e, entry.type)}
                 sx={{
+                  p: 1.5,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
                   cursor: draggedSymbolType === entry.type ? 'grabbing' : 'grab',
                   userSelect: 'none',
                   opacity: draggedSymbolType && draggedSymbolType !== entry.type ? 0.5 : 1,
+                  transition: 'box-shadow 0.2s, background 0.2s',
+                  boxShadow: draggedSymbolType === entry.type ? 6 : 2,
+                  borderRadius: 2,
+                  '&:hover': {
+                    boxShadow: 6,
+                    background: '#f0f4ff',
+                  },
+                  // Prevent text selection during drag
+                  '&:active': {
+                    cursor: 'grabbing',
+                  },
                 }}
               >
-                <ListItemIcon>
-                  {entry.renderer ? (
-                    <span style={{ width: 32, height: 32, display: 'inline-block' }}>
-                      <entry.renderer {...entry.defaultProperties} />
-                    </span>
-                  ) : (
-                    <SymbolSVG paths={entry.paths} viewBox={entry.viewBox || '0 0 24 24'} />
-                  )}
-                </ListItemIcon>
-                <ListItemText primary={entry.name} />
-              </ListItemButton>
-            ))}
-          </React.Fragment>
-        ))}
-      </List>
+                {entry.renderer ? (
+                  <span style={{ width: 48, height: 48, display: 'inline-block' }}>
+                    <entry.renderer {...entry.defaultProperties} />
+                  </span>
+                ) : (
+                  <SymbolSVG paths={entry.paths} viewBox={entry.viewBox || '0 0 24 24'} />
+                )}
+                <Box sx={{ mt: 1, fontSize: 14, textAlign: 'center', color: 'text.primary', fontWeight: 500, wordBreak: 'break-word' }}>
+                  {entry.name}
+                </Box>
+              </Paper>
+            </Tooltip>
+          ))}
+        </Box>
+      </Box>
     </Paper>
   );
 };

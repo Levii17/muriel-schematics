@@ -1,6 +1,6 @@
-import React, { useMemo, useCallback } from 'react';
+import React, { useMemo } from 'react';
 import { useCanvasStore } from '../store/canvasStore';
-import { SymbolType, WireType, ElectricalSymbol, Wire, WireProperties } from '../types';
+import { WireProperties } from '../types';
 import { TextField, Typography, Divider, Box, Button, MenuItem, InputLabel, FormControl, Select, Slider } from '@mui/material';
 import type { SelectChangeEvent } from '@mui/material/Select';
 
@@ -28,8 +28,6 @@ const PropertiesPanel: React.FC = React.memo(() => {
   const selectedElements = useCanvasStore((s) => s.selectedElements);
   const updateSymbol = useCanvasStore((s) => s.updateSymbol);
   const updateWire = useCanvasStore((s) => s.updateWire);
-  const undo = useCanvasStore((s) => s.undo);
-  const redo = useCanvasStore((s) => s.redo);
   const clearSelection = useCanvasStore((s) => s.clearSelection);
 
   // Find selected items

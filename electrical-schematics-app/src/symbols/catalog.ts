@@ -1,5 +1,7 @@
 // Central catalog of SANS electrical symbols
 import { SymbolType, ConnectionPoint } from '../types';
+import React from 'react';
+import { AmmeterSVG, VoltmeterSVG, WattmeterSVG, MotorSVG, EnergyMeterSVG } from './svgRenderers';
 
 export interface SymbolCatalogEntry {
   type: SymbolType;
@@ -214,7 +216,7 @@ export const symbolCatalog: SymbolCatalogEntry[] = [
   {
     type: SymbolType.CIRCUIT_BREAKER_SINGLE_POLE,
     name: 'Circuit Breaker (single pole)',
-    category: 'Power',
+    category: 'Protection',
     viewBox: '0 0 200 300',
     paths: [
       { d: 'M100 20 V80', stroke: '#000', strokeWidth: 2, fill: 'none' },
@@ -237,7 +239,7 @@ export const symbolCatalog: SymbolCatalogEntry[] = [
   {
     type: SymbolType.CIRCUIT_BREAKER_DOUBLE_POLE,
     name: 'Circuit Breaker (double pole)',
-    category: 'Power',
+    category: 'Protection',
     viewBox: '0 0 200 200',
     paths: [
       { d: 'M50 60 H150 V140 H50 Z', stroke: 'black', strokeWidth: 2, fill: 'none' },
@@ -264,7 +266,7 @@ export const symbolCatalog: SymbolCatalogEntry[] = [
   {
     type: SymbolType.CIRCUIT_BREAKER_TRIPLE_POLE,
     name: 'Circuit Breaker (triple pole)',
-    category: 'Power',
+    category: 'Protection',
     viewBox: '0 0 300 200',
     paths: [
       { d: 'M30 60 H270 V140 H30 Z', stroke: 'black', strokeWidth: 2, fill: 'none' },
@@ -299,7 +301,7 @@ export const symbolCatalog: SymbolCatalogEntry[] = [
   {
     type: SymbolType.ISOLATOR_DOUBLE_POLE,
     name: 'Isolator (double pole)',
-    category: 'Power',
+    category: 'Protection',
     viewBox: '0 0 200 200',
     paths: [
       { d: 'M75 20 V74', stroke: 'black', strokeWidth: 2, fill: 'none' },
@@ -325,7 +327,7 @@ export const symbolCatalog: SymbolCatalogEntry[] = [
   {
     type: SymbolType.ISOLATOR_TRIPLE_POLE,
     name: 'Isolator (triple pole)',
-    category: 'Power',
+    category: 'Protection',
     viewBox: '0 0 300 200',
     paths: [
       { d: 'M75 20 V74', stroke: 'red', strokeWidth: 2, fill: 'none' },
@@ -359,7 +361,7 @@ export const symbolCatalog: SymbolCatalogEntry[] = [
   {
     type: SymbolType.PUSH_BUTTON_START,
     name: 'Push button (start)',
-    category: 'Power',
+    category: 'Switches & Relays',
     viewBox: '0 0 200 200',
     paths: [
       { d: 'M80 70 V85', stroke: 'black', strokeWidth: 3, fill: 'none' },
@@ -381,7 +383,7 @@ export const symbolCatalog: SymbolCatalogEntry[] = [
   {
     type: SymbolType.PUSH_BUTTON_STOP,
     name: 'Push button (stop)',
-    category: 'Power',
+    category: 'Switches & Relays',
     viewBox: '0 0 200 200',
     paths: [
       { d: 'M80 69 V85', stroke: 'black', strokeWidth: 3, fill: 'none' },
@@ -403,7 +405,7 @@ export const symbolCatalog: SymbolCatalogEntry[] = [
   {
     type: SymbolType.PUSH_BUTTON_EMERGENCY_STOP,
     name: 'Push button (emergency stop)',
-    category: 'Power',
+    category: 'Switches & Relays',
     viewBox: '0 0 200 200',
     paths: [
       { d: 'M80 69 V85', stroke: 'black', strokeWidth: 3, fill: 'none' },
@@ -425,7 +427,7 @@ export const symbolCatalog: SymbolCatalogEntry[] = [
   {
     type: SymbolType.COIL_CONTACTOR,
     name: 'Coil (contactor)',
-    category: 'Power',
+    category: 'Switches & Relays',
     viewBox: '0 0 200 260',
     paths: [
       { d: 'M100 50 V100', stroke: 'black', strokeWidth: 2, fill: 'none' },
@@ -444,7 +446,7 @@ export const symbolCatalog: SymbolCatalogEntry[] = [
   {
     type: SymbolType.CONTACTOR_TRIPLE,
     name: 'Contactor (triple)',
-    category: 'Power',
+    category: 'Switches & Relays',
     viewBox: '0 0 400 300',
     paths: [
       { d: 'M50 20 V110', stroke: 'red', strokeWidth: 2, fill: 'none' },
@@ -482,7 +484,7 @@ export const symbolCatalog: SymbolCatalogEntry[] = [
   {
     type: SymbolType.COIL_TIME_RELAY,
     name: 'Coil (time relay)',
-    category: 'Power',
+    category: 'Switches & Relays',
     viewBox: '0 0 200 260',
     paths: [
       { d: 'M100 50 V100', stroke: 'black', strokeWidth: 2, fill: 'none' },
@@ -501,7 +503,7 @@ export const symbolCatalog: SymbolCatalogEntry[] = [
   {
     type: SymbolType.CONTACT_CONTACTOR_NO,
     name: 'Contact of contactor (n/o - normally open)',
-    category: 'Power',
+    category: 'Switches & Relays',
     viewBox: '0 0 200 120',
     paths: [
       { d: 'M20 70 H70', stroke: 'black', strokeWidth: 3, fill: 'none' },
@@ -519,7 +521,7 @@ export const symbolCatalog: SymbolCatalogEntry[] = [
   {
     type: SymbolType.CONTACT_CONTACTOR_NC,
     name: 'Contact of contactor (n/c - normally close)',
-    category: 'Power',
+    category: 'Switches & Relays',
     viewBox: '0 0 200 120',
     paths: [
       { d: 'M20 70 H70', stroke: 'black', strokeWidth: 3, fill: 'none' },
@@ -537,7 +539,7 @@ export const symbolCatalog: SymbolCatalogEntry[] = [
   {
     type: SymbolType.CONTACT_TIME_RELAY_NO,
     name: 'Contact of time relay (n/o - normally open)',
-    category: 'Power',
+    category: 'Switches & Relays',
     viewBox: '0 0 200 120',
     paths: [
       { d: 'M20 70 H70', stroke: 'black', strokeWidth: 3, fill: 'none' },
@@ -555,7 +557,7 @@ export const symbolCatalog: SymbolCatalogEntry[] = [
   {
     type: SymbolType.CONTACT_TIME_RELAY_NC,
     name: 'Contact of time relay (n/c - normally close)',
-    category: 'Power',
+    category: 'Switches & Relays',
     viewBox: '0 0 200 120',
     paths: [
       { d: 'M20 70 H70', stroke: 'black', strokeWidth: 3, fill: 'none' },
@@ -575,7 +577,7 @@ export const symbolCatalog: SymbolCatalogEntry[] = [
     {
     type: SymbolType.OVERLOAD_RELAY_TRIPLE_POLE,
     name: 'Overload relay (triple pole)',
-    category: 'Power',
+    category: 'Protection',
     viewBox: '0 0 250 200',
     paths: [
       { d: 'M80 25 m-8,0 a8,8 0 1,0 16,0 a8,8 0 1,0 -16,0', fill: 'black' },
@@ -620,7 +622,7 @@ export const symbolCatalog: SymbolCatalogEntry[] = [
   {
     type: SymbolType.OVERLOAD_RELAY,
     name: 'Overload relay',
-    category: 'Power',
+    category: 'Protection',
     viewBox: '0 0 150 200',
     paths: [
       { d: 'M75 25 m-8,0 a8,8 0 1,0 16,0 a8,8 0 1,0 -16,0', fill: 'black' },
@@ -645,13 +647,9 @@ export const symbolCatalog: SymbolCatalogEntry[] = [
     {
     type: SymbolType.MOTOR_AC,
     name: 'Motor (A.C.)',
-    category: 'Power',
+    category: 'Motors & Loads',
     viewBox: '0 0 200 100',
-    paths: [
-      { d: 'M20 50 H60', stroke: 'black', strokeWidth: 2, fill: 'none' },
-      { d: 'M140 50 H180', stroke: 'black', strokeWidth: 2, fill: 'none' },
-      { d: 'M100 50 m-40,0 a40,40 0 1,0 80,0 a40,40 0 1,0 -80,0', stroke: 'black', strokeWidth: 2, fill: 'none' },
-    ],
+    renderer: MotorSVG,
     defaultProperties: {},
     defaultConnectionPoints: [
       { id: 'left', position: { x: 20, y: 50 }, type: 'input' },
@@ -665,7 +663,7 @@ export const symbolCatalog: SymbolCatalogEntry[] = [
   {
     type: SymbolType.MOTOR_THREE_PHASE_DOL,
     name: 'Motor Three-phase induction (direct on line)',
-    category: 'Power',
+    category: 'Motors & Loads',
     viewBox: '0 0 200 250',
     paths: [
       { d: 'M60 34 m-5,0 a5,5 0 1,0 10,0 a5,5 0 1,0 -10,0', fill: 'black' },
@@ -689,7 +687,7 @@ export const symbolCatalog: SymbolCatalogEntry[] = [
   {
     type: SymbolType.MOTOR_THREE_PHASE_STAR_DELTA,
     name: 'Motor Three-phase induction (star-delta)',
-    category: 'Power',
+    category: 'Motors & Loads',
     viewBox: '0 0 250 300',
     paths: [
       { d: 'M80 43 m-5,0 a5,5 0 1,0 10,0 a5,5 0 1,0 -10,0', fill: 'black' },
@@ -719,7 +717,7 @@ export const symbolCatalog: SymbolCatalogEntry[] = [
   {
     type: SymbolType.MOTOR_THREE_PHASE_SLIP_RING,
     name: 'Motor Three-phase induction (slip ring)',
-    category: 'Power',
+    category: 'Motors & Loads',
     viewBox: '0 0 200 300',
     paths: [
       { d: 'M70 34 m-5,0 a5,5 0 1,0 10,0 a5,5 0 1,0 -10,0', fill: 'black' },
@@ -758,13 +756,9 @@ export const symbolCatalog: SymbolCatalogEntry[] = [
   {
     type: SymbolType.AMMETER,
     name: 'Ammeter',
-    category: 'Power',
+    category: 'Meters & Indicators',
     viewBox: '0 0 200 100',
-    paths: [
-      { d: 'M20 50 H65', stroke: 'black', strokeWidth: 2, fill: 'none' },
-      { d: 'M100 50 m-35,0 a35,35 0 1,0 70,0 a35,35 0 1,0 -70,0', stroke: 'black', strokeWidth: 2, fill: 'none' },
-      { d: 'M135 50 H180', stroke: 'black', strokeWidth: 2, fill: 'none' },
-    ],
+    renderer: AmmeterSVG,
     defaultProperties: {},
     defaultConnectionPoints: [
       { id: 'left', position: { x: 20, y: 50 }, type: 'input' },
@@ -774,13 +768,9 @@ export const symbolCatalog: SymbolCatalogEntry[] = [
   {
     type: SymbolType.VOLTMETER,
     name: 'Voltmeter',
-    category: 'Power',
+    category: 'Meters & Indicators',
     viewBox: '0 0 200 100',
-    paths: [
-      { d: 'M20 50 H65', stroke: 'black', strokeWidth: 2, fill: 'none' },
-      { d: 'M100 50 m-35,0 a35,35 0 1,0 70,0 a35,35 0 1,0 -70,0', stroke: 'black', strokeWidth: 2, fill: 'none' },
-      { d: 'M135 50 H180', stroke: 'black', strokeWidth: 2, fill: 'none' },
-    ],
+    renderer: VoltmeterSVG,
     defaultProperties: {},
     defaultConnectionPoints: [
       { id: 'left', position: { x: 20, y: 50 }, type: 'input' },
@@ -790,19 +780,9 @@ export const symbolCatalog: SymbolCatalogEntry[] = [
   {
     type: SymbolType.WATTMETER,
     name: 'Wattmeter',
-    category: 'Power',
+    category: 'Meters & Indicators',
     viewBox: '0 0 200 200',
-    paths: [
-      { d: 'M100 50 m-40,0 a40,40 0 1,0 80,0 a40,40 0 1,0 -80,0', stroke: 'black', strokeWidth: 2, fill: 'none' },
-      { d: 'M20 100 H60', stroke: 'black', strokeWidth: 2, fill: 'none' },
-      { d: 'M140 100 H180', stroke: 'black', strokeWidth: 2, fill: 'none' },
-      { d: 'M100 50 L100 90', stroke: 'black', strokeWidth: 2, fill: 'none' },
-      { d: 'M100 110 L100 150', stroke: 'black', strokeWidth: 2, fill: 'none' },
-      { d: 'M85 100 L115 100', stroke: 'black', strokeWidth: 2, fill: 'none' },
-      { d: 'M85 100 L115 100', stroke: 'black', strokeWidth: 2, fill: 'none' },
-      { d: 'M85 100 L115 100', stroke: 'black', strokeWidth: 2, fill: 'none' },
-      { d: 'M85 100 L115 100', stroke: 'black', strokeWidth: 2, fill: 'none' },
-    ],
+    renderer: WattmeterSVG,
     defaultProperties: {},
     defaultConnectionPoints: [
       { id: 'left', position: { x: 20, y: 100 }, type: 'input' },
@@ -849,18 +829,14 @@ export const symbolCatalog: SymbolCatalogEntry[] = [
   {
     type: SymbolType.ENERGY_METER_KWH,
     name: 'Energy meter (kilo Watt hour meter)',
-    category: 'Power',
+    category: 'Meters & Indicators',
     viewBox: '0 0 200 200',
-    paths: [
-      { d: 'M40 40 H160 V160 H40 Z', stroke: '#000', strokeWidth: 2, fill: 'none' },
-      { d: 'M40 80 H160', stroke: '#000', strokeWidth: 2, fill: 'none' },
-    ],
+    renderer: EnergyMeterSVG,
     defaultProperties: {},
     defaultConnectionPoints: [
       { id: 'input', position: { x: 0, y: 10 }, type: 'input' },
-      { id: 'output', position: { x: 20, y: 10 }, type: 'output' },
     ],
-    displaySize: { width: 20, height: 20 },
+    displaySize: { width: 120, height: 120 },
     strokeWidth: 2,
     connectionPointRadius: 3,
     selectionStrokeWidth: 3
@@ -870,7 +846,7 @@ export const symbolCatalog: SymbolCatalogEntry[] = [
   {
     type: SymbolType.EARTH_CONNECTION,
     name: 'Earth connection',
-    category: 'Power',
+    category: 'Ground & Reference',
     viewBox: '0 0 200 150',
     paths: [
       { d: 'M100 30 V90', stroke: '#006600', strokeWidth: 3, fill: 'none' },
@@ -892,7 +868,7 @@ export const symbolCatalog: SymbolCatalogEntry[] = [
   {
     type: SymbolType.LAMP_INCANDESCENT_SYMBOL,
     name: 'Lamp (incandescent)',
-    category: 'Power',
+    category: 'Meters & Indicators',
     viewBox: '0 0 200 100',
     paths: [
       { d: 'M20 50 H65', stroke: '#000', strokeWidth: 2, fill: 'none' },
@@ -916,7 +892,7 @@ export const symbolCatalog: SymbolCatalogEntry[] = [
   {
     type: SymbolType.LAMP_INDICATION_SYMBOL,
     name: 'Lamp (indication)',
-    category: 'Power',
+    category: 'Meters & Indicators',
     viewBox: '0 0 200 120',
     paths: [
       { d: 'M20 65 H65', stroke: '#000', strokeWidth: 2, fill: 'none' },
@@ -940,7 +916,7 @@ export const symbolCatalog: SymbolCatalogEntry[] = [
   {
     type: SymbolType.RESISTOR_SYMBOL,
     name: 'Resistor',
-    category: 'Power',
+    category: 'Passive Components',
     viewBox: '0 0 300 80',
     paths: [
       { d: 'M30 40 m-6,0 a6,6 0 1,0 12,0 a6,6 0 1,0 -12,0', fill: '#000' },
@@ -964,7 +940,7 @@ export const symbolCatalog: SymbolCatalogEntry[] = [
   {
     type: SymbolType.CAPACITOR_SYMBOL,
     name: 'Capacitor',
-    category: 'Power',
+    category: 'Passive Components',
     viewBox: '0 0 200 200',
     paths: [
       { d: 'M100 30 V80', stroke: '#000', strokeWidth: 3, fill: 'none' },
@@ -987,7 +963,7 @@ export const symbolCatalog: SymbolCatalogEntry[] = [
   {
     type: SymbolType.FUSE_SYMBOL,
     name: 'Fuse',
-    category: 'Power',
+    category: 'Protection',
     viewBox: '0 0 200 250',
     paths: [
       { d: 'M100 30 V80', stroke: '#000', strokeWidth: 3, fill: 'none' },
@@ -1010,7 +986,7 @@ export const symbolCatalog: SymbolCatalogEntry[] = [
   {
     type: SymbolType.SWITCH_SINGLE_POLE,
     name: 'Switch (single pole)',
-    category: 'Power',
+    category: 'Switches & Relays',
     viewBox: '0 0 200 250',
     paths: [
       { d: 'M100 30 V80', stroke: '#000', strokeWidth: 3, fill: 'none' },

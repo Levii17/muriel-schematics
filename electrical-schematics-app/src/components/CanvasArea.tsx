@@ -50,13 +50,12 @@ interface CanvasAreaProps {
   selectToolActive?: boolean;
   handToolActive?: boolean;
   textToolActive?: boolean;
-  dimensionToolActive?: boolean;
-  measureToolActive?: boolean;
   showGrid?: boolean;
   snapToGrid?: boolean;
   draggedSymbolType?: SymbolType | null;
   dragPreviewPosition?: { x: number; y: number } | null;
   setDragPreviewPosition?: (pos: { x: number; y: number } | null) => void;
+  setDraggedSymbolType?: (type: SymbolType | null) => void;
 }
 
 const CanvasArea: React.FC<CanvasAreaProps> = ({ 
@@ -64,19 +63,23 @@ const CanvasArea: React.FC<CanvasAreaProps> = ({
   selectToolActive, 
   handToolActive, 
   textToolActive,
-  dimensionToolActive,
-  measureToolActive,
   showGrid, 
   snapToGrid, 
   draggedSymbolType, 
   dragPreviewPosition, 
-  setDragPreviewPosition 
+  setDragPreviewPosition,
+  setDraggedSymbolType
 }) => {
   const stageRef = useRef<any>(null);
   const [titleBlock, setTitleBlock] = useState(DEFAULT_TITLE_BLOCK);
   const [editingField, setEditingField] = useState<string | null>(null);
   const [inputValue, setInputValue] = useState('');
   const [inputPos, setInputPos] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
+  
+  // Responsive scaling - moved to top so it's available to all functions
+  const [containerSize, setContainerSize] = useState({ width: PAPER_WIDTH, height: PAPER_HEIGHT });
+  const containerRef = useRef<HTMLDivElement>(null);
+  
   const symbols = useCanvasStore((s) => s.symbols);
   const addSymbol = useCanvasStore((s) => s.addSymbol);
   const [logoImage] = useImage(murielLogo);
@@ -101,18 +104,12 @@ const CanvasArea: React.FC<CanvasAreaProps> = ({
   const [isDragOver, setIsDragOver] = useState(false);
 
   // New state for enhanced tools
-  const [measurementPoints, setMeasurementPoints] = useState<Point[]>([]);
   const [textInputMode, setTextInputMode] = useState(false);
   const [textInputPosition, setTextInputPosition] = useState<Point | null>(null);
-  const [dimensionStart, setDimensionStart] = useState<Point | null>(null);
   
   // New store selectors
   const textElements = useCanvasStore((s) => s.textElements);
-  const dimensionElements = useCanvasStore((s) => s.dimensionElements);
   const addTextElement = useCanvasStore((s) => s.addTextElement);
-  const addDimensionElement = useCanvasStore((s) => s.addDimensionElement);
-  const measureDistance = useCanvasStore((s) => s.measureDistance);
-  const measurementUnit = useCanvasStore((s) => s.measurementUnit);
 
   // Find nearest symbol center to a point
   const getNearestSymbolCenter = useCallback((point: { x: number; y: number }) => {
@@ -145,18 +142,26 @@ const CanvasArea: React.FC<CanvasAreaProps> = ({
     const relativeX = screenX - boundingRect.left;
     const relativeY = screenY - boundingRect.top;
     
+    // Account for the centered grid position and zoom/pan
+    const gridOffsetX = (containerSize.width - PAPER_WIDTH) / 2;
+    const gridOffsetY = (containerSize.height - PAPER_HEIGHT) / 2;
+    
     return {
-      x: (relativeX - pan.x) / zoom,
-      y: (relativeY - pan.y) / zoom
+      x: (relativeX - gridOffsetX - pan.x) / zoom,
+      y: (relativeY - gridOffsetY - pan.y) / zoom
     };
-  }, [pan, zoom]);
+  }, [pan, zoom, containerSize]);
 
   const canvasToScreen = useCallback((canvasX: number, canvasY: number) => {
+    // Account for the centered grid position and zoom/pan
+    const gridOffsetX = (containerSize.width - PAPER_WIDTH) / 2;
+    const gridOffsetY = (containerSize.height - PAPER_HEIGHT) / 2;
+    
     return {
-      x: canvasX * zoom + pan.x,
-      y: canvasY * zoom + pan.y
+      x: canvasX * zoom + pan.x + gridOffsetX,
+      y: canvasY * zoom + pan.y + gridOffsetY
     };
-  }, [pan, zoom]);
+  }, [pan, zoom, containerSize]);
 
   // Improved drag preview with better positioning
   const renderDragPreview = useCallback(() => {
@@ -242,11 +247,9 @@ const CanvasArea: React.FC<CanvasAreaProps> = ({
     );
   }, [draggedSymbolType, dragPreviewPosition, snapToGrid, zoom, screenToCanvas, canvasToScreen]);
 
-  // Handle drop from SymbolLibrary
-  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    const symbolType = e.dataTransfer.getData('application/x-symbol-type') as SymbolType;
-    if (!symbolType) return;
+  // Custom drop handling for symbol placement
+  const handlePointerUp = useCallback((e: PointerEvent) => {
+    if (!draggedSymbolType || !dragPreviewPosition) return;
     
     // Get the stage and its container for proper coordinate transformation
     const stage = stageRef.current;
@@ -256,15 +259,15 @@ const CanvasArea: React.FC<CanvasAreaProps> = ({
     const boundingRect = stageContainer.getBoundingClientRect();
     
     // Transform screen coordinates to canvas coordinates
-    const screenX = e.clientX - boundingRect.left;
-    const screenY = e.clientY - boundingRect.top;
+    const screenX = dragPreviewPosition.x - boundingRect.left;
+    const screenY = dragPreviewPosition.y - boundingRect.top;
     
-    // Convert to canvas coordinates (accounting for zoom and pan)
-    const canvasX = (screenX - pan.x) / zoom;
-    const canvasY = (screenY - pan.y) / zoom;
+    // Convert to canvas coordinates (accounting for zoom, pan, and centered grid)
+    const canvasX = (screenX - (containerSize.width - PAPER_WIDTH) / 2 - pan.x) / zoom;
+    const canvasY = (screenY - (containerSize.height - PAPER_HEIGHT) / 2 - pan.y) / zoom;
     
     // Get symbol catalog entry for proper positioning
-    const catalogEntry = symbolCatalog.find(s => s.type === symbolType);
+    const catalogEntry = symbolCatalog.find(s => s.type === draggedSymbolType);
     if (!catalogEntry) return;
     
     const displaySize = catalogEntry.displaySize || { width: 20, height: 20 };
@@ -307,124 +310,85 @@ const CanvasArea: React.FC<CanvasAreaProps> = ({
       height: displaySize.height
     };
     
-    // Check if within drawing area bounds
+    // Check if within drawing area bounds (now relative to the centered grid)
     const withinBounds = (
-      x >= BORDER_THICKNESS &&
-      y >= BORDER_THICKNESS &&
-      x + displaySize.width <= PAPER_WIDTH - BORDER_THICKNESS &&
-      y + displaySize.height <= PAPER_HEIGHT - BORDER_THICKNESS - TITLE_BLOCK_HEIGHT
+      x >= 0 &&
+      y >= 0 &&
+      x + displaySize.width <= PAPER_WIDTH &&
+      y + displaySize.height <= PAPER_HEIGHT - TITLE_BLOCK_HEIGHT
     );
     
     if (!withinBounds) {
-      // Try to find a valid position nearby
-      const grid = snapToGrid ? (useCanvasStore.getState().gridSize || GRID_SPACING) : 10;
-      let foundValidPosition = false;
-      
-      // Search in a spiral pattern around the original position
-      for (let radius = 1; radius <= 5 && !foundValidPosition; radius++) {
-        for (let angle = 0; angle < 2 * Math.PI && !foundValidPosition; angle += Math.PI / 4) {
-          const testX = x + Math.cos(angle) * radius * grid;
-          const testY = y + Math.sin(angle) * radius * grid;
-          
-          const testBounds = {
-            x: testX,
-            y: testY,
-            width: displaySize.width,
-            height: displaySize.height
-          };
-          
-          if (
-            testX >= BORDER_THICKNESS &&
-            testY >= BORDER_THICKNESS &&
-            testX + displaySize.width <= PAPER_WIDTH - BORDER_THICKNESS &&
-            testY + displaySize.height <= PAPER_HEIGHT - BORDER_THICKNESS - TITLE_BLOCK_HEIGHT
-          ) {
-            x = testX;
-            y = testY;
-            foundValidPosition = true;
-          }
-        }
-      }
-      
-      if (!foundValidPosition) {
-        // Still add the symbol but warn the user
-        console.warn('Symbol placed outside drawing area bounds');
-      }
+      console.warn('Symbol would be placed outside drawing area');
+      return;
     }
     
-    // Check for collisions with existing symbols
-    const collisionMargin = 5;
-    const hasCollision = symbols.some(existingSymbol => {
-      const existingEntry = symbolCatalog.find(s => s.type === existingSymbol.type);
-      const existingSize = existingEntry?.displaySize || { width: 20, height: 20 };
+    // Check for overlapping with existing symbols
+    const overlapping = symbols.some(symbol => {
+      const existingCatalogEntry = symbolCatalog.find(s => s.type === symbol.type);
+      const existingDisplaySize = existingCatalogEntry?.displaySize || { width: 20, height: 20 };
+      const existingBounds = {
+        x: symbol.position.x,
+        y: symbol.position.y,
+        width: existingDisplaySize.width,
+        height: existingDisplaySize.height
+      };
       
       return (
-        x < existingSymbol.position.x + existingSize.width + collisionMargin &&
-        x + displaySize.width + collisionMargin > existingSymbol.position.x &&
-        y < existingSymbol.position.y + existingSize.height + collisionMargin &&
-        y + displaySize.height + collisionMargin > existingSymbol.position.y
+        symbolBounds.x < existingBounds.x + existingBounds.width &&
+        symbolBounds.x + symbolBounds.width > existingBounds.x &&
+        symbolBounds.y < existingBounds.y + existingBounds.height &&
+        symbolBounds.y + symbolBounds.height > existingBounds.y
       );
     });
     
-    if (hasCollision) {
-      // Try to find a non-colliding position
-      const grid = snapToGrid ? (useCanvasStore.getState().gridSize || GRID_SPACING) : 10;
-      let foundNonCollidingPosition = false;
-      
-      for (let radius = 1; radius <= 3 && !foundNonCollidingPosition; radius++) {
-        for (let angle = 0; angle < 2 * Math.PI && !foundNonCollidingPosition; angle += Math.PI / 6) {
-          const testX = x + Math.cos(angle) * radius * grid;
-          const testY = y + Math.sin(angle) * radius * grid;
-          
-          const testCollision = symbols.some(existingSymbol => {
-            const existingEntry = symbolCatalog.find(s => s.type === existingSymbol.type);
-            const existingSize = existingEntry?.displaySize || { width: 20, height: 20 };
-            
-            return (
-              testX < existingSymbol.position.x + existingSize.width + collisionMargin &&
-              testX + displaySize.width + collisionMargin > existingSymbol.position.x &&
-              testY < existingSymbol.position.y + existingSize.height + collisionMargin &&
-              testY + displaySize.height + collisionMargin > existingSymbol.position.y
-            );
-          });
-          
-          if (!testCollision) {
-            x = testX;
-            y = testY;
-            foundNonCollidingPosition = true;
-          }
-        }
-      }
+    if (overlapping) {
+      console.warn('Symbol would overlap with existing symbol');
+      return;
     }
     
     // Add the symbol
     addSymbol({
-      type: symbolType,
+      type: draggedSymbolType,
       position: { x, y },
       rotation: 0,
       scale: 1,
-      properties: catalogEntry.defaultProperties || {},
-      connections: [],
+      properties: {},
+      connections: []
     });
     
-    e.dataTransfer.clearData();
-    setIsDragOver(false);
-    if (setDragPreviewPosition) setDragPreviewPosition(null);
-  };
+    if (setDraggedSymbolType) setDraggedSymbolType(null);
+    if (setDragPreviewPosition) {
+      setDragPreviewPosition(null);
+    }
+  }, [draggedSymbolType, dragPreviewPosition, containerSize, pan, zoom, snapToGrid, symbols, addSymbol, setDraggedSymbolType, setDragPreviewPosition]);
 
-  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    if (!isDragOver) setIsDragOver(true);
-  };
+  // Handle drag over for visual feedback
+  const handlePointerMove = useCallback((e: PointerEvent) => {
+    if (draggedSymbolType) {
+      setIsDragOver(true);
+    }
+  }, [draggedSymbolType]);
 
-  const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
+  // Handle drag leave
+  const handlePointerLeave = useCallback(() => {
     setIsDragOver(false);
-    if (setDragPreviewPosition) setDragPreviewPosition(null);
-  };
+  }, []);
+
+  // Add global pointer event listeners for drop handling
+  useEffect(() => {
+    if (draggedSymbolType) {
+      document.addEventListener('pointerup', handlePointerUp);
+      document.addEventListener('pointermove', handlePointerMove);
+      
+      return () => {
+        document.removeEventListener('pointerup', handlePointerUp);
+        document.removeEventListener('pointermove', handlePointerMove);
+      };
+    }
+  }, [draggedSymbolType, handlePointerUp, handlePointerMove]);
 
   // Responsive scaling
-  const [containerSize, setContainerSize] = useState({ width: PAPER_WIDTH, height: PAPER_HEIGHT });
-  const containerRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const handleResize = () => {
       if (containerRef.current) {
@@ -479,23 +443,27 @@ const CanvasArea: React.FC<CanvasAreaProps> = ({
   // Render grid lines inside the drawing area
   const renderGrid = () => {
     const lines = [];
-    for (let x = BORDER_THICKNESS + GRID_SPACING; x < PAPER_WIDTH - BORDER_THICKNESS; x += GRID_SPACING) {
+    // Vertical grid lines - inside the border, full height
+    for (let x = BORDER_THICKNESS; x <= PAPER_WIDTH - BORDER_THICKNESS; x += GRID_SPACING) {
       lines.push(
         <Line
           key={`vgrid${x}`}
-          points={[x, BORDER_THICKNESS, x, PAPER_HEIGHT - BORDER_THICKNESS - TITLE_BLOCK_HEIGHT]}
+          points={[x, BORDER_THICKNESS, x, PAPER_HEIGHT - BORDER_THICKNESS]}
           stroke="#eee"
           strokeWidth={1}
+          listening={false}
         />
       );
     }
-    for (let y = BORDER_THICKNESS + GRID_SPACING; y < PAPER_HEIGHT - BORDER_THICKNESS - TITLE_BLOCK_HEIGHT; y += GRID_SPACING) {
+    // Horizontal grid lines - inside the border, full height
+    for (let y = BORDER_THICKNESS; y <= PAPER_HEIGHT - BORDER_THICKNESS; y += GRID_SPACING) {
       lines.push(
         <Line
           key={`hgrid${y}`}
           points={[BORDER_THICKNESS, y, PAPER_WIDTH - BORDER_THICKNESS, y]}
           stroke="#eee"
           strokeWidth={1}
+          listening={false}
         />
       );
     }
@@ -819,7 +787,13 @@ const CanvasArea: React.FC<CanvasAreaProps> = ({
       }
       return (
         <Group key={def.key} x={x} y={y}>
-          <Rect width={w} height={h} fill="#fff" />
+          <Rect
+            width={w}
+            height={h}
+            fill="#fff"
+            onClick={() => handleTextClick(def.key)}
+            listening={true}
+          />
           <Text
             text={value}
             fontSize={14}
@@ -828,8 +802,7 @@ const CanvasArea: React.FC<CanvasAreaProps> = ({
             height={h}
             align="center"
             verticalAlign="middle"
-            onClick={() => handleTextClick(def.key)}
-            listening={true}
+            listening={false}
           />
         </Group>
       );
@@ -898,54 +871,34 @@ const CanvasArea: React.FC<CanvasAreaProps> = ({
     const pointer = stage.getPointerPosition();
     if (!pointer) return;
 
+    // Convert stage coordinates to canvas coordinates
+    const canvasPointer = {
+      x: (pointer.x - (containerSize.width - PAPER_WIDTH) / 2 - pan.x) / zoom,
+      y: (pointer.y - (containerSize.height - PAPER_HEIGHT) / 2 - pan.y) / zoom
+    };
+
     // Check if click is in drawing area
     const inDrawingArea = (
-      pointer.x > BORDER_THICKNESS &&
-      pointer.y > BORDER_THICKNESS &&
-      pointer.x < PAPER_WIDTH - BORDER_THICKNESS &&
-      pointer.y < PAPER_HEIGHT - BORDER_THICKNESS - TITLE_BLOCK_HEIGHT
+      canvasPointer.x >= 0 &&
+      canvasPointer.y >= 0 &&
+      canvasPointer.x <= PAPER_WIDTH &&
+      canvasPointer.y <= PAPER_HEIGHT - TITLE_BLOCK_HEIGHT
     );
 
     if (!inDrawingArea) return;
 
     // Text tool
     if (textToolActive) {
-      setTextInputPosition(pointer);
+      // Convert back to screen coordinates for text input positioning
+      const screenPos = canvasToScreen(canvasPointer.x, canvasPointer.y);
+      setTextInputPosition(screenPos);
       setTextInputMode(true);
-      return;
-    }
-
-    // Dimension tool
-    if (dimensionToolActive) {
-      if (!dimensionStart) {
-        setDimensionStart(pointer);
-      } else {
-        addDimensionElement({
-          startPoint: dimensionStart,
-          endPoint: pointer,
-          offset: 20,
-          text: `${Math.round(Math.hypot(pointer.x - dimensionStart.x, pointer.y - dimensionStart.y))}${measurementUnit}`,
-          style: 'linear'
-        });
-        setDimensionStart(null);
-      }
-      return;
-    }
-
-    // Measure tool
-    if (measureToolActive) {
-      setMeasurementPoints(prev => [...prev, pointer]);
-      if (measurementPoints.length === 1) {
-        const result = measureDistance(measurementPoints[0], pointer);
-        console.log(`Distance: ${result.distance.toFixed(2)} ${result.unit}`);
-        setMeasurementPoints([]);
-      }
       return;
     }
 
     // If wire tool is active, always process wire drawing logic first
     if (wireToolActive) {
-      let snap = getNearestSymbolCenter(pointer) || pointer;
+      let snap = getNearestSymbolCenter(canvasPointer) || canvasPointer;
       if (snapToGrid) {
         const grid = useCanvasStore.getState().gridSize || GRID_SPACING;
         snap = {
@@ -982,12 +935,11 @@ const CanvasArea: React.FC<CanvasAreaProps> = ({
     }
     // Only use pan/drag threshold logic for Hand tool, Spacebar, or middle mouse
     if (shouldStartPan(e)) {
-      const pointer = e.target.getStage().getPointerPosition();
       setPendingPan(pointer);
       setLastPointer(pointer);
       return;
     }
-  }, [textToolActive, dimensionToolActive, measureToolActive, measurementPoints, measureDistance, measurementUnit, addDimensionElement, wireToolActive, drawingWire, addWire, setDrawingWire, getNearestSymbolCenter, shouldStartPan, setPendingPan, setLastPointer, snapToGrid]);
+  }, [textToolActive, wireToolActive, drawingWire, addWire, getNearestSymbolCenter, shouldStartPan, setPendingPan, setLastPointer, snapToGrid, pan, zoom, containerSize, canvasToScreen]);
 
   const handleStageMouseMove = useCallback((e: any) => {
     const pointer = e.target.getStage().getPointerPosition();
@@ -1010,7 +962,14 @@ const CanvasArea: React.FC<CanvasAreaProps> = ({
     if (!wireToolActive) return;
     if (!drawingWire.start) return;
     if (!pointer) return;
-    let snap = getNearestSymbolCenter(pointer) || pointer;
+    
+    // Convert stage coordinates to canvas coordinates
+    const canvasPointer = {
+      x: (pointer.x - (containerSize.width - PAPER_WIDTH) / 2 - pan.x) / zoom,
+      y: (pointer.y - (containerSize.height - PAPER_HEIGHT) / 2 - pan.y) / zoom
+    };
+    
+    let snap = getNearestSymbolCenter(canvasPointer) || canvasPointer;
     if (snapToGrid) {
       const grid = useCanvasStore.getState().gridSize || GRID_SPACING;
       snap = {
@@ -1019,7 +978,7 @@ const CanvasArea: React.FC<CanvasAreaProps> = ({
       };
     }
     setDrawingWire((dw) => ({ ...dw, mouse: snap }));
-  }, [pendingPan, isPanning, lastPointer, pan, setPan, wireToolActive, snapToGrid, drawingWire.start, getNearestSymbolCenter]);
+  }, [pendingPan, isPanning, lastPointer, pan, setPan, wireToolActive, snapToGrid, drawingWire.start, getNearestSymbolCenter, zoom, containerSize]);
 
   const handleStageMouseUp = useCallback((e?: any) => {
     if (pendingPan) {
@@ -1102,46 +1061,6 @@ const CanvasArea: React.FC<CanvasAreaProps> = ({
       </Group>
     ));
 
-  // Render dimension elements
-  const renderDimensionElements = () =>
-    dimensionElements.map((dimElement) => (
-      <Group key={dimElement.id}>
-        <Line
-          points={[dimElement.startPoint.x, dimElement.startPoint.y, dimElement.endPoint.x, dimElement.endPoint.y]}
-          stroke="#666"
-          strokeWidth={1}
-          dash={[5, 5]}
-        />
-        <Text
-          x={(dimElement.startPoint.x + dimElement.endPoint.x) / 2}
-          y={(dimElement.startPoint.y + dimElement.endPoint.y) / 2 - dimElement.offset}
-          text={dimElement.text}
-          fontSize={12}
-          fill="#333"
-          align="center"
-        />
-      </Group>
-    ));
-
-  // Render measurement points
-  const renderMeasurementPoints = () =>
-    measurementPoints.map((point, index) => (
-      <Circle
-        key={index}
-        x={point.x}
-        y={point.y}
-        radius={4}
-        fill="#1976d2"
-        stroke="#fff"
-        strokeWidth={2}
-      />
-    ));
-
-  // Update memoized values
-  const textElementsMemo = useMemo(() => renderTextElements(), [renderTextElements]);
-  const dimensionElementsMemo = useMemo(() => renderDimensionElements(), [renderDimensionElements]);
-  const measurementPointsMemo = useMemo(() => renderMeasurementPoints(), [renderMeasurementPoints]);
-
   // Main render
   return (
     <div
@@ -1151,7 +1070,7 @@ const CanvasArea: React.FC<CanvasAreaProps> = ({
         height: '100%',
         position: 'relative',
         background: '#222',
-        cursor: isPanning ? 'grabbing' : spacePressed ? 'grab' : selectToolActive ? 'pointer' : handToolActive ? 'grab' : wireToolActive ? 'crosshair' : textToolActive ? 'text' : dimensionToolActive ? 'crosshair' : measureToolActive ? 'crosshair' : 'default',
+        cursor: isPanning ? 'grabbing' : spacePressed ? 'grab' : selectToolActive ? 'pointer' : handToolActive ? 'grab' : wireToolActive ? 'crosshair' : textToolActive ? 'text' : 'default',
       }}
       onDrop={handleDropMemo}
       onDragOver={handleDragOverMemo}
@@ -1331,17 +1250,19 @@ const CanvasArea: React.FC<CanvasAreaProps> = ({
         ref={stageRef}
         width={containerSize.width}
         height={containerSize.height}
-        scaleX={zoom}
-        scaleY={zoom}
-        x={pan.x}
-        y={pan.y}
         style={{ background: '#fff', borderRadius: 8, boxShadow: '0 2px 8px #0003' }}
         onWheel={handleWheel}
         onMouseDown={handleStageMouseDownMemo}
         onMouseMove={handleStageMouseMoveMemo}
         onDblClick={handleStageDblClick}
       >
-        <Layer>
+        {/* Single layer with zoom and pan applied to everything */}
+        <Layer
+          x={(containerSize.width - PAPER_WIDTH) / 2 + pan.x}
+          y={(containerSize.height - PAPER_HEIGHT) / 2 + pan.y}
+          scaleX={zoom}
+          scaleY={zoom}
+        >
           {/* EGD Border */}
           <Rect
             x={0}
@@ -1368,6 +1289,7 @@ const CanvasArea: React.FC<CanvasAreaProps> = ({
             {titleBlockGridMemo}
             {titleBlockFieldsMemo}
           </Group>
+          
           {/* Render symbols */}
           {symbolsMemo}
           {/* Render wires above symbols */}
@@ -1415,10 +1337,8 @@ const CanvasArea: React.FC<CanvasAreaProps> = ({
               listening={false}
             />
           )}
-          {/* Render new elements */}
-          {textElementsMemo}
-          {dimensionElementsMemo}
-          {measurementPointsMemo}
+          {/* Render text elements */}
+          {renderTextElements()}
         </Layer>
       </Stage>
     </div>

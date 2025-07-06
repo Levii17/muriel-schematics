@@ -171,8 +171,6 @@ export enum ToolType {
   WIRE = 'wire',
   HAND = 'hand',
   TEXT = 'text',
-  DIMENSION = 'dimension',
-  MEASURE = 'measure',
   CONNECT = 'connect',
   ALIGN = 'align',
   DISTRIBUTE = 'distribute'
@@ -189,35 +187,16 @@ export interface TextElement {
   alignment: 'left' | 'center' | 'right';
 }
 
-export interface DimensionElement {
-  id: string;
-  startPoint: Point;
-  endPoint: Point;
-  offset: number;
-  text: string;
-  style: 'linear' | 'angular' | 'radial';
-}
-
-export interface MeasurementResult {
-  distance: number;
-  angle?: number;
-  area?: number;
-  unit: 'mm' | 'cm' | 'm' | 'in' | 'ft';
-}
-
 export interface CanvasState {
   symbols: ElectricalSymbol[];
   wires: Wire[];
   textElements: TextElement[];
-  dimensionElements: DimensionElement[];
   selectedElements: string[];
   zoom: number;
   pan: Point;
   gridSize: number;
   snapToGrid: boolean;
   activeTool: ToolType;
-  measurementUnit: 'mm' | 'cm' | 'm' | 'in' | 'ft';
-  showMeasurements: boolean;
   autoSave: boolean;
   lastSaved: Date | null;
 }

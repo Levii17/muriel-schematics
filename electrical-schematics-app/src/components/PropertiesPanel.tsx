@@ -78,115 +78,213 @@ const PropertiesPanel: React.FC = React.memo(() => {
     // Validation for thickness
     const thickness = item.properties?.thickness || 1;
     const thicknessError = isNaN(Number(thickness)) || Number(thickness) < 1 || Number(thickness) > 5;
-    
+
     return (
       <Box>
-        <Typography variant="subtitle1" sx={{ mb: 1 }}>
+        <Typography variant="h6" gutterBottom>
           {isSymbol ? 'Symbol Properties' : 'Wire Properties'}
         </Typography>
-        <Divider sx={{ mb: 2 }} />
         
-        {/* Symbol-specific controls */}
+        {/* Rotation controls for symbols */}
         {isSymbol && (
-          <>
-            <Typography variant="caption" sx={{ fontWeight: 600 }}>Size & Scale</Typography>
-            <Box sx={{ mb: 2 }}>
-              <Typography variant="body2" gutterBottom>
-                Scale: {Math.round((item as ElectricalSymbol).scale * 100)}%
-              </Typography>
-              <Slider
-                value={(item as ElectricalSymbol).scale}
-                onChange={(_, value) => updateSymbol(item.id, { scale: value as number })}
-                min={0.1}
-                max={3}
-                step={0.1}
-                marks={[
-                  { value: 0.1, label: '10%' },
-                  { value: 1, label: '100%' },
-                  { value: 3, label: '300%' }
-                ]}
-                valueLabelDisplay="auto"
-                sx={{ mt: 1 }}
-              />
+          <Box sx={{ mb: 2 }}>
+            <Typography variant="subtitle2" gutterBottom>
+              Rotation: {item.rotation}°
+            </Typography>
+            <Slider
+              value={item.rotation}
+              onChange={(_, value) => updateSymbol(item.id, { rotation: value as number })}
+              min={0}
+              max={360}
+              step={15}
+              marks={[
+                { value: 0, label: '0°' },
+                { value: 90, label: '90°' },
+                { value: 180, label: '180°' },
+                { value: 270, label: '270°' },
+                { value: 360, label: '360°' }
+              ]}
+              valueLabelDisplay="auto"
+            />
+            <TextField
+              label="Rotation (degrees)"
+              type="number"
+              value={item.rotation}
+              onChange={(e) => updateSymbol(item.id, { rotation: parseFloat(e.target.value) || 0 })}
+              inputProps={{ min: 0, max: 360, step: 1 }}
+              size="small"
+              sx={{ mt: 1 }}
+            />
+            <Box sx={{ mt: 1, display: 'flex', gap: 1 }}>
               <Button 
                 size="small" 
-                onClick={() => updateSymbol(item.id, { scale: 1 })}
-                sx={{ mt: 1 }}
+                variant="outlined"
+                onClick={() => updateSymbol(item.id, { rotation: (item.rotation + 90) % 360 })}
               >
-                Reset Scale
+                Rotate 90°
+              </Button>
+              <Button 
+                size="small" 
+                variant="outlined"
+                onClick={() => updateSymbol(item.id, { rotation: (item.rotation - 90 + 360) % 360 })}
+              >
+                Rotate -90°
               </Button>
             </Box>
-            <Divider sx={{ mb: 2 }} />
+          </Box>
+        )}
+
+        {/* Scale controls for symbols */}
+        {isSymbol && (
+          <Box sx={{ mb: 2 }}>
+            <Typography variant="subtitle2" gutterBottom>
+              Scale: {(item.scale * 100).toFixed(0)}%
+            </Typography>
+            <Slider
+              value={item.scale}
+              onChange={(_, value) => updateSymbol(item.id, { scale: value as number })}
+              min={0.1}
+              max={3}
+              step={0.1}
+              marks={[
+                { value: 0.5, label: '50%' },
+                { value: 1, label: '100%' },
+                { value: 2, label: '200%' }
+              ]}
+              valueLabelDisplay="auto"
+            />
+            <TextField
+              label="Scale (%)"
+              type="number"
+              value={Math.round(item.scale * 100)}
+              onChange={(e) => updateSymbol(item.id, { scale: (parseFloat(e.target.value) || 100) / 100 })}
+              inputProps={{ min: 10, max: 300, step: 5 }}
+              size="small"
+              sx={{ mt: 1 }}
+            />
+          </Box>
+        )}
+
+        {/* Wire-specific properties */}
+        {!isSymbol && (
+          <>
+            <FormControl fullWidth size="small" sx={{ mb: 2 }}>
+              <InputLabel>Color</InputLabel>
+              <Select
+                value={item.properties?.color || '#000000'}
+                onChange={handleSelectChange('color')}
+                label="Color"
+              >
+                <MenuItem value="#000000">Black</MenuItem>
+                <MenuItem value="#ff0000">Red</MenuItem>
+                <MenuItem value="#00ff00">Green</MenuItem>
+                <MenuItem value="#0000ff">Blue</MenuItem>
+                <MenuItem value="#ffff00">Yellow</MenuItem>
+                <MenuItem value="#ff00ff">Magenta</MenuItem>
+                <MenuItem value="#00ffff">Cyan</MenuItem>
+                <MenuItem value="#808080">Gray</MenuItem>
+              </Select>
+            </FormControl>
+
+            <FormControl fullWidth size="small" sx={{ mb: 2 }}>
+              <InputLabel>Thickness</InputLabel>
+              <Select
+                value={item.properties?.thickness || 1}
+                onChange={handleSelectChange('thickness')}
+                label="Thickness"
+                error={thicknessError}
+              >
+                {thicknessOptions.map(option => (
+                  <MenuItem key={option} value={option}>{option}px</MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+
+            <FormControl fullWidth size="small" sx={{ mb: 2 }}>
+              <InputLabel>Material</InputLabel>
+              <Select
+                value={item.properties?.material || 'copper'}
+                onChange={handleSelectChange('material')}
+                label="Material"
+              >
+                <MenuItem value="copper">Copper</MenuItem>
+                <MenuItem value="aluminum">Aluminum</MenuItem>
+                <MenuItem value="steel">Steel</MenuItem>
+              </Select>
+            </FormControl>
+
+            <FormControl fullWidth size="small" sx={{ mb: 2 }}>
+              <InputLabel>Insulation</InputLabel>
+              <Select
+                value={item.properties?.insulation || 'PVC'}
+                onChange={handleSelectChange('insulation')}
+                label="Insulation"
+              >
+                <MenuItem value="PVC">PVC</MenuItem>
+                <MenuItem value="XLPE">XLPE</MenuItem>
+                <MenuItem value="rubber">Rubber</MenuItem>
+                <MenuItem value="none">None</MenuItem>
+              </Select>
+            </FormControl>
           </>
         )}
-        
-        {/* Appearance group */}
-        <Typography variant="caption" sx={{ fontWeight: 600 }}>Appearance</Typography>
-        <Box sx={{ mb: 2 }}>
-          <TextField
-            label="Label"
-            value={item.properties?.label || ''}
-            fullWidth
-            margin="dense"
-            onChange={e => handleChange('label', e.target.value)}
-          />
-          {!isSymbol && (
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 1 }}>
-              <TextField
-                label="Color"
-                type="color"
-                value={item.properties?.color || '#000000'}
-                fullWidth={false}
-                margin="dense"
-                sx={{ width: 60, minWidth: 60, p: 0, bgcolor: 'transparent' }}
-                InputLabelProps={{ shrink: true }}
-                onChange={e => handleChange('color', e.target.value)}
-              />
-              <FormControl margin="dense" sx={{ minWidth: 80 }}>
-                <InputLabel id="thickness-label">Thickness</InputLabel>
-                <Select
-                  labelId="thickness-label"
-                  value={thickness}
-                  label="Thickness"
-                  onChange={handleSelectChange('thickness')}
-                  error={thicknessError}
-                >
-                  {thicknessOptions.map(opt => (
-                    <MenuItem key={opt} value={opt}>{opt} px</MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            </Box>
-          )}
-        </Box>
-        
-        {/* Electrical group */}
-        <Typography variant="caption" sx={{ fontWeight: 600 }}>Electrical</Typography>
-        <Box sx={{ mb: 2 }}>
-          {isSymbol && (
+
+        {/* Symbol-specific properties */}
+        {isSymbol && (
+          <>
             <TextField
-              label="Type"
-              value={item.type}
+              label="Label"
+              value={item.properties?.label || ''}
+              onChange={(e) => handleChange('label', e.target.value)}
               fullWidth
-              margin="dense"
-              disabled
+              size="small"
+              sx={{ mb: 2 }}
             />
-          )}
-          <TextField
-            label="Rating"
-            value={item.properties?.rating || ''}
-            fullWidth
-            margin="dense"
-            onChange={e => handleChange('rating', e.target.value)}
-          />
+            <TextField
+              label="Rating"
+              value={item.properties?.rating || ''}
+              onChange={(e) => handleChange('rating', e.target.value)}
+              fullWidth
+              size="small"
+              sx={{ mb: 2 }}
+            />
+            <TextField
+              label="Manufacturer"
+              value={item.properties?.manufacturer || ''}
+              onChange={(e) => handleChange('manufacturer', e.target.value)}
+              fullWidth
+              size="small"
+              sx={{ mb: 2 }}
+            />
+            <TextField
+              label="Part Number"
+              value={item.properties?.partNumber || ''}
+              onChange={(e) => handleChange('partNumber', e.target.value)}
+              fullWidth
+              size="small"
+              sx={{ mb: 2 }}
+            />
+            <TextField
+              label="Description"
+              value={item.properties?.description || ''}
+              onChange={(e) => handleChange('description', e.target.value)}
+              fullWidth
+              multiline
+              rows={3}
+              size="small"
+              sx={{ mb: 2 }}
+            />
+          </>
+        )}
+
+        <Box sx={{ display: 'flex', gap: 1, mt: 2 }}>
+          <Button variant="outlined" onClick={handleReset} size="small">
+            Reset
+          </Button>
+          <Button variant="contained" onClick={handleApply} size="small">
+            Apply
+          </Button>
         </Box>
-        
-        <Button variant="outlined" size="small" color="secondary" sx={{ mt: 1, mr: 1 }} onClick={handleReset}>
-          Reset to Default
-        </Button>
-        <Button variant="contained" size="small" color="primary" sx={{ mt: 1 }} onClick={handleApply}>
-          Apply
-        </Button>
       </Box>
     );
   }

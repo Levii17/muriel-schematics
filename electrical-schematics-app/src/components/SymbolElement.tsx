@@ -38,9 +38,9 @@ const SymbolElement: React.FC<SymbolElementProps> = ({
   }
 
   // Get appearance properties with defaults
-  const displaySize = catalogEntry.displaySize || { width: 40, height: 40 };
+  const displaySize = catalogEntry.displaySize || { width: 20, height: 20 };
   const strokeWidth = catalogEntry.strokeWidth || 2;
-  const connectionPointRadius = catalogEntry.connectionPointRadius || 6;
+  const connectionPointRadius = catalogEntry.connectionPointRadius || 3;
   const selectionStrokeWidth = catalogEntry.selectionStrokeWidth || 3;
 
   // Merge default and actual connection points

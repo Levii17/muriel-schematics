@@ -105,7 +105,6 @@ export enum SymbolType {
   PHASE_L2 = 'phase_l2', // L2
   PHASE_L3 = 'phase_l3', // L3
   PHASE_NEUTRAL = 'phase_neutral', // N
-  ENERGY_METER = 'energy_meter', // kWh
   AC = 'ac', // Alternating current
   THREE_PHASE = 'three_phase',
   CONNECTIONS_SUPPLY = 'connections_supply',
@@ -167,14 +166,60 @@ export enum WireType {
   DATA = 'data'
 }
 
+export enum ToolType {
+  SELECT = 'select',
+  WIRE = 'wire',
+  HAND = 'hand',
+  TEXT = 'text',
+  DIMENSION = 'dimension',
+  MEASURE = 'measure',
+  CONNECT = 'connect',
+  ALIGN = 'align',
+  DISTRIBUTE = 'distribute'
+}
+
+export interface TextElement {
+  id: string;
+  text: string;
+  position: Point;
+  fontSize: number;
+  fontFamily: string;
+  color: string;
+  rotation: number;
+  alignment: 'left' | 'center' | 'right';
+}
+
+export interface DimensionElement {
+  id: string;
+  startPoint: Point;
+  endPoint: Point;
+  offset: number;
+  text: string;
+  style: 'linear' | 'angular' | 'radial';
+}
+
+export interface MeasurementResult {
+  distance: number;
+  angle?: number;
+  area?: number;
+  unit: 'mm' | 'cm' | 'm' | 'in' | 'ft';
+}
+
 export interface CanvasState {
   symbols: ElectricalSymbol[];
   wires: Wire[];
+  textElements: TextElement[];
+  dimensionElements: DimensionElement[];
   selectedElements: string[];
   zoom: number;
   pan: Point;
   gridSize: number;
   snapToGrid: boolean;
+  activeTool: ToolType;
+  measurementUnit: 'mm' | 'cm' | 'm' | 'in' | 'ft';
+  showMeasurements: boolean;
+  autoSave: boolean;
+  lastSaved: Date | null;
 }
 
 export interface ValidationRule {

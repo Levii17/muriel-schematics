@@ -27,14 +27,21 @@ import PropertiesPanel from './PropertiesPanel';
 import { useCanvasStore } from '../store/canvasStore';
 import Tooltip from '@mui/material/Tooltip';
 import CenterFocusStrongIcon from '@mui/icons-material/CenterFocusStrong';
-import { SymbolType } from '../types';
+import { SymbolType, ToolType } from '../types';
+import TextFieldsIcon from '@mui/icons-material/TextFields';
+import StraightenIcon from '@mui/icons-material/Straighten';
+import SettingsIcon from '@mui/icons-material/Settings';
+import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh';
+import { FormControl, Select, MenuItem, Switch } from '@mui/material';
 
 const drawerWidth = 260;
 
 const Layout: React.FC<{ children?: React.ReactNode }> = ({ children }) => {
-  const [activeTool, setActiveTool] = useState<'select' | 'wire' | 'hand'>('select');
+  const [activeTool, setActiveTool] = useState<ToolType>(ToolType.SELECT);
   const deleteSymbol = useCanvasStore((s) => s.deleteSymbol);
   const deleteWire = useCanvasStore((s) => s.deleteWire);
+  const deleteTextElement = useCanvasStore((s) => s.deleteTextElement);
+  const deleteDimensionElement = useCanvasStore((s) => s.deleteDimensionElement);
   const selectedElements = useCanvasStore((s) => s.selectedElements);
   const clearSelection = useCanvasStore((s) => s.clearSelection);
   const [showGrid, setShowGrid] = useState(true);
@@ -46,55 +53,157 @@ const Layout: React.FC<{ children?: React.ReactNode }> = ({ children }) => {
   const setPan = useCanvasStore((s) => s.setPan);
   const updateSymbol = useCanvasStore((s) => s.updateSymbol);
   const symbols = useCanvasStore((s) => s.symbols);
+  const setActiveToolStore = useCanvasStore((s) => s.setActiveTool);
+  const showMeasurements = useCanvasStore((s) => s.showMeasurements);
+  const toggleShowMeasurements = useCanvasStore((s) => s.toggleShowMeasurements);
+  const measurementUnit = useCanvasStore((s) => s.measurementUnit);
+  const setMeasurementUnit = useCanvasStore((s) => s.setMeasurementUnit);
+  const autoSave = useCanvasStore((s) => s.autoSave);
+  const toggleAutoSave = useCanvasStore((s) => s.toggleAutoSave);
+  const validateSchematic = useCanvasStore((s) => s.validateSchematic);
+  const exportToPDF = useCanvasStore((s) => s.exportToPDF);
+  const exportToSVG = useCanvasStore((s) => s.exportToSVG);
+  const exportToPNG = useCanvasStore((s) => s.exportToPNG);
+  const rotateSymbol = useCanvasStore((s) => s.rotateSymbol);
+  const selectAll = useCanvasStore((s) => s.selectAll);
+  const duplicateSelected = useCanvasStore((s) => s.duplicateSelected);
+  
   // Drag state for symbol drag-and-drop
   const [draggedSymbolType, setDraggedSymbolType] = useState<SymbolType | null>(null);
   const [dragPreviewPosition, setDragPreviewPosition] = useState<{ x: number; y: number } | null>(null);
   // Symbol library search state
   const [symbolSearch, setSymbolSearch] = useState('');
+  // Settings panel state
+  const [showSettings, setShowSettings] = useState(false);
 
   const handleDelete = () => {
     selectedElements.forEach((id) => {
       deleteSymbol(id);
       deleteWire(id);
+      deleteTextElement(id);
+      deleteDimensionElement(id);
     });
     clearSelection();
+  };
+
+  const handleToolChange = (tool: ToolType) => {
+    setActiveTool(tool);
+    setActiveToolStore(tool);
+  };
+
+  const handleValidate = () => {
+    const results = validateSchematic();
+    if (results.length > 0) {
+      console.log('Validation results:', results);
+      // Show validation results in a dialog
+    } else {
+      console.log('No validation issues found');
+    }
   };
 
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.target && (e.target as HTMLElement).tagName === 'INPUT') return;
-      if (e.ctrlKey && (e.key === 'z' || e.key === 'Z')) { e.preventDefault(); undo(); }
-      else if (e.ctrlKey && (e.key === 'y' || e.key === 'Y')) { e.preventDefault(); redo(); }
-      else if (e.ctrlKey && (e.key === '=' || e.key === '+')) { e.preventDefault(); setZoom(Math.min(zoom + 0.1, 2)); }
-      else if (e.ctrlKey && (e.key === '-' || e.key === '_')) { e.preventDefault(); setZoom(Math.max(zoom - 0.1, 0.2)); }
-      else if (e.key === 's' || e.key === 'S') { setActiveTool('select'); }
-      else if (e.key === 'h' || e.key === 'H') { setActiveTool('hand'); }
-      else if (e.key === 'w' || e.key === 'W') { setActiveTool('wire'); }
-      else if (e.key === 'Delete' || e.key === 'Backspace') { handleDelete(); }
-      // Symbol scaling shortcuts
-      else if (e.key === '[' || e.key === '{') { 
-        e.preventDefault(); 
-        selectedElements.forEach(id => {
-          const symbol = symbols.find((s: any) => s.id === id);
-          if (symbol) {
-            updateSymbol(id, { scale: Math.max(symbol.scale - 0.1, 0.1) });
-          }
-        });
+      // Prevent shortcuts when typing in input fields
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+        return;
       }
-      else if (e.key === ']' || e.key === '}') { 
-        e.preventDefault(); 
-        selectedElements.forEach(id => {
-          const symbol = symbols.find((s: any) => s.id === id);
-          if (symbol) {
-            updateSymbol(id, { scale: Math.min(symbol.scale + 0.1, 3) });
-          }
-        });
+
+      // Tool shortcuts
+      if (e.ctrlKey || e.metaKey) {
+        switch (e.key) {
+          case '1':
+            e.preventDefault();
+            handleToolChange(ToolType.SELECT);
+            break;
+          case '2':
+            e.preventDefault();
+            handleToolChange(ToolType.WIRE);
+            break;
+          case '3':
+            e.preventDefault();
+            handleToolChange(ToolType.HAND);
+            break;
+          case '4':
+            e.preventDefault();
+            handleToolChange(ToolType.TEXT);
+            break;
+          case '5':
+            e.preventDefault();
+            handleToolChange(ToolType.DIMENSION);
+            break;
+          case '6':
+            e.preventDefault();
+            handleToolChange(ToolType.MEASURE);
+            break;
+          case 'z':
+            e.preventDefault();
+            if (e.shiftKey) {
+              redo();
+            } else {
+              undo();
+            }
+            break;
+          case 'y':
+            e.preventDefault();
+            redo();
+            break;
+          case 'a':
+            e.preventDefault();
+            selectAll();
+            break;
+          case 'd':
+            e.preventDefault();
+            duplicateSelected();
+            break;
+          case 'Delete':
+          case 'Backspace':
+            e.preventDefault();
+            handleDelete();
+            break;
+        }
+      } else {
+        // Non-modifier shortcuts
+        switch (e.key) {
+          case 'Escape':
+            clearSelection();
+            break;
+          case 'r':
+            if (selectedElements.length === 1) {
+              const selectedSymbol = symbols.find(s => s.id === selectedElements[0]);
+              if (selectedSymbol) {
+                rotateSymbol(selectedSymbol.id, (selectedSymbol.rotation + 90) % 360);
+              }
+            }
+            break;
+          case 'R':
+            if (selectedElements.length === 1) {
+              const selectedSymbol = symbols.find(s => s.id === selectedElements[0]);
+              if (selectedSymbol) {
+                rotateSymbol(selectedSymbol.id, (selectedSymbol.rotation - 90 + 360) % 360);
+              }
+            }
+            break;
+          case '0':
+            setZoom(1);
+            setPan({ x: 0, y: 0 });
+            break;
+          case '=':
+          case '+':
+            e.preventDefault();
+            setZoom(Math.min(2, zoom * 1.2));
+            break;
+          case '-':
+            e.preventDefault();
+            setZoom(Math.max(0.2, zoom / 1.2));
+            break;
+        }
       }
     };
+
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [setActiveTool, handleDelete, undo, redo, setZoom, zoom, selectedElements, symbols, updateSymbol]);
+  }, [selectedElements, symbols, rotateSymbol, setZoom, zoom, setPan, clearSelection, undo, redo, selectAll, duplicateSelected, handleDelete]);
 
   return (
     <Box sx={{ display: 'flex', height: '100vh', bgcolor: '#f4f6fa' }}>
@@ -112,6 +221,9 @@ const Layout: React.FC<{ children?: React.ReactNode }> = ({ children }) => {
           <IconButton color="inherit" size="large"><SaveIcon /></IconButton>
           <IconButton color="inherit" size="large"><CloudUploadIcon /></IconButton>
           <IconButton color="inherit" size="large"><CloudDownloadIcon /></IconButton>
+          <IconButton color="inherit" onClick={() => setShowSettings(!showSettings)}>
+            <SettingsIcon />
+          </IconButton>
         </Toolbar>
       </AppBar>
       {/* Sidebar: Symbol Library */}
@@ -158,54 +270,187 @@ const Layout: React.FC<{ children?: React.ReactNode }> = ({ children }) => {
         sx={{ flexGrow: 1, bgcolor: '#f4f6fa', display: 'flex', flexDirection: 'column', minWidth: 0 }}
       >
         <Toolbar />
-        {/* Toolbar above canvas */}
-        <Paper elevation={1} sx={{ display: 'flex', alignItems: 'center', p: 1, mb: 1, gap: 1 }}>
-          <Tooltip title="Select (S)"><IconButton color={activeTool === 'select' ? 'primary' : 'default'} onClick={() => setActiveTool('select')}><MouseIcon /></IconButton></Tooltip>
-          <Tooltip title="Hand/Move (H)"><IconButton color={activeTool === 'hand' ? 'primary' : 'default'} onClick={() => setActiveTool('hand')}><PanToolIcon /></IconButton></Tooltip>
-          <Tooltip title="Wire Tool (W)"><IconButton color={activeTool === 'wire' ? 'primary' : 'default'} onClick={() => setActiveTool('wire')}><TimelineIcon /></IconButton></Tooltip>
-          <Tooltip title="Delete (Del)"><IconButton onClick={handleDelete}><DeleteIcon /></IconButton></Tooltip>
+        {/* Enhanced Toolbar */}
+        <Paper elevation={1} sx={{ display: 'flex', alignItems: 'center', p: 1, mb: 1, gap: 1, flexWrap: 'wrap' }}>
+          {/* Drawing Tools */}
+          <Tooltip title="Select (S)">
+            <IconButton 
+              color={activeTool === ToolType.SELECT ? 'primary' : 'default'} 
+              onClick={() => handleToolChange(ToolType.SELECT)}
+            >
+              <MouseIcon />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="Hand/Move (H)">
+            <IconButton 
+              color={activeTool === ToolType.HAND ? 'primary' : 'default'} 
+              onClick={() => handleToolChange(ToolType.HAND)}
+            >
+              <PanToolIcon />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="Wire Tool (W)">
+            <IconButton 
+              color={activeTool === ToolType.WIRE ? 'primary' : 'default'} 
+              onClick={() => handleToolChange(ToolType.WIRE)}
+            >
+              <TimelineIcon />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="Text Tool (T)">
+            <IconButton 
+              color={activeTool === ToolType.TEXT ? 'primary' : 'default'} 
+              onClick={() => handleToolChange(ToolType.TEXT)}
+            >
+              <TextFieldsIcon />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="Dimension Tool (D)">
+            <IconButton 
+              color={activeTool === ToolType.DIMENSION ? 'primary' : 'default'} 
+              onClick={() => handleToolChange(ToolType.DIMENSION)}
+            >
+              <StraightenIcon />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="Measure Tool (M)">
+            <IconButton 
+              color={activeTool === ToolType.MEASURE ? 'primary' : 'default'} 
+              onClick={() => handleToolChange(ToolType.MEASURE)}
+            >
+              <CenterFocusStrongIcon />
+            </IconButton>
+          </Tooltip>
+          
           <Divider orientation="vertical" flexItem sx={{ mx: 1 }} />
-          <Tooltip title="Undo (Ctrl+Z)"><IconButton onClick={undo}><UndoIcon /></IconButton></Tooltip>
-          <Tooltip title="Redo (Ctrl+Y)"><IconButton onClick={redo}><RedoIcon /></IconButton></Tooltip>
+          
+          {/* Edit Operations */}
+          <Tooltip title="Delete (Del)">
+            <IconButton onClick={handleDelete}>
+              <DeleteIcon />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="Undo (Ctrl+Z)">
+            <IconButton onClick={undo}>
+              <UndoIcon />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="Redo (Ctrl+Y)">
+            <IconButton onClick={redo}>
+              <RedoIcon />
+            </IconButton>
+          </Tooltip>
+          
           <Divider orientation="vertical" flexItem sx={{ mx: 1 }} />
-          <Tooltip title="Toggle Grid"><IconButton color={showGrid ? 'primary' : 'default'} onClick={() => setShowGrid(v => !v)}><GridOnIcon /></IconButton></Tooltip>
-          <Tooltip title="Toggle Snap to Grid"><IconButton color={snapToGrid ? 'primary' : 'default'} onClick={() => setSnapToGrid(v => !v)}><GridOnIcon sx={{ opacity: 0.5 }} /></IconButton></Tooltip>
-          <Tooltip title="Zoom Out (Ctrl+-)"><IconButton onClick={() => setZoom(Math.max(zoom - 0.1, 0.2))}><ZoomOutIcon /></IconButton></Tooltip>
+          
+          {/* View Controls */}
+          <Tooltip title="Toggle Grid">
+            <IconButton color={showGrid ? 'primary' : 'default'} onClick={() => setShowGrid(v => !v)}>
+              <GridOnIcon />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="Toggle Snap to Grid">
+            <IconButton color={snapToGrid ? 'primary' : 'default'} onClick={() => setSnapToGrid(v => !v)}>
+              <GridOnIcon sx={{ opacity: 0.5 }} />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="Toggle Measurements">
+            <IconButton color={showMeasurements ? 'primary' : 'default'} onClick={toggleShowMeasurements}>
+              <StraightenIcon sx={{ opacity: 0.7 }} />
+            </IconButton>
+          </Tooltip>
+          
+          <Divider orientation="vertical" flexItem sx={{ mx: 1 }} />
+          
+          {/* Zoom Controls */}
+          <Tooltip title="Zoom Out (Ctrl+-)">
+            <IconButton onClick={() => setZoom(Math.max(zoom - 0.1, 0.2))}>
+              <ZoomOutIcon />
+            </IconButton>
+          </Tooltip>
           <Typography variant="body2" sx={{ mx: 1 }}>{Math.round(zoom * 100)}%</Typography>
-          <Tooltip title="Zoom In (Ctrl+=)"><IconButton onClick={() => setZoom(Math.min(zoom + 0.1, 2))}><ZoomInIcon /></IconButton></Tooltip>
-          <Tooltip title="Reset View"><IconButton onClick={() => { setZoom(1); setPan({ x: 0, y: 0 }); }}><CenterFocusStrongIcon /></IconButton></Tooltip>
+          <Tooltip title="Zoom In (Ctrl+=)">
+            <IconButton onClick={() => setZoom(Math.min(zoom + 0.1, 2))}>
+              <ZoomInIcon />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="Reset View">
+            <IconButton onClick={() => { setZoom(1); setPan({ x: 0, y: 0 }); }}>
+              <CenterFocusStrongIcon />
+            </IconButton>
+          </Tooltip>
+          
           <Divider orientation="vertical" flexItem sx={{ mx: 1 }} />
-          <Tooltip title="Scale Down Selected ([)"><IconButton onClick={() => {
-            selectedElements.forEach(id => {
-              const symbol = symbols.find((s: any) => s.id === id);
-              if (symbol) {
-                updateSymbol(id, { scale: Math.max(symbol.scale - 0.1, 0.1) });
-              }
-            });
-          }}><Typography variant="body2">[</Typography></IconButton></Tooltip>
-          <Tooltip title="Scale Up Selected (])"><IconButton onClick={() => {
-            selectedElements.forEach(id => {
-              const symbol = symbols.find((s: any) => s.id === id);
-              if (symbol) {
-                updateSymbol(id, { scale: Math.min(symbol.scale + 0.1, 3) });
-              }
-            });
-          }}><Typography variant="body2">]</Typography></IconButton></Tooltip>
+          
+          {/* Export Options */}
+          <Tooltip title="Export to PDF">
+            <IconButton onClick={exportToPDF}>
+              <CloudDownloadIcon />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="Export to SVG">
+            <IconButton onClick={exportToSVG}>
+              <CloudDownloadIcon />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="Export to PNG">
+            <IconButton onClick={exportToPNG}>
+              <CloudDownloadIcon />
+            </IconButton>
+          </Tooltip>
+          
+          <Divider orientation="vertical" flexItem sx={{ mx: 1 }} />
+          
+          {/* Validation */}
+          <Tooltip title="Validate Schematic">
+            <IconButton onClick={handleValidate}>
+              <AutoFixHighIcon />
+            </IconButton>
+          </Tooltip>
         </Paper>
+
+        {/* Settings Panel */}
+        {showSettings && (
+          <Paper elevation={1} sx={{ p: 2, mb: 1 }}>
+            <Typography variant="h6" gutterBottom>Settings</Typography>
+            <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', mb: 2 }}>
+              <Typography>Measurement Unit:</Typography>
+              <FormControl size="small">
+                <Select
+                  value={measurementUnit}
+                  onChange={(e) => setMeasurementUnit(e.target.value as any)}
+                >
+                  <MenuItem value="mm">mm</MenuItem>
+                  <MenuItem value="cm">cm</MenuItem>
+                  <MenuItem value="m">m</MenuItem>
+                  <MenuItem value="in">in</MenuItem>
+                  <MenuItem value="ft">ft</MenuItem>
+                </Select>
+              </FormControl>
+            </Box>
+            <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+              <Typography>Auto-save:</Typography>
+              <Switch checked={autoSave} onChange={() => toggleAutoSave()} />
+            </Box>
+          </Paper>
+        )}
+
         {/* Canvas Area */}
-        <Box sx={{ flex: 1, display: 'flex', minHeight: 0 }}>
-          <Box sx={{ flex: 1, bgcolor: '#fff', borderRadius: 2, boxShadow: 1, overflow: 'hidden', minHeight: 0 }}>
-            <CanvasArea
-              wireToolActive={activeTool === 'wire'}
-              selectToolActive={activeTool === 'select'}
-              handToolActive={activeTool === 'hand'}
-              showGrid={showGrid}
-              snapToGrid={snapToGrid}
-              draggedSymbolType={draggedSymbolType}
-              dragPreviewPosition={dragPreviewPosition}
-              setDragPreviewPosition={setDragPreviewPosition}
-            />
-          </Box>
+        <Box sx={{ flexGrow: 1, display: 'flex' }}>
+          <CanvasArea
+            wireToolActive={activeTool === ToolType.WIRE}
+            selectToolActive={activeTool === ToolType.SELECT}
+            handToolActive={activeTool === ToolType.HAND}
+            textToolActive={activeTool === ToolType.TEXT}
+            dimensionToolActive={activeTool === ToolType.DIMENSION}
+            measureToolActive={activeTool === ToolType.MEASURE}
+            showGrid={showGrid}
+            snapToGrid={snapToGrid}
+            draggedSymbolType={draggedSymbolType}
+            dragPreviewPosition={dragPreviewPosition}
+            setDragPreviewPosition={setDragPreviewPosition}
+          />
+          <PropertiesPanel />
         </Box>
       </Box>
       {/* Properties Panel */}

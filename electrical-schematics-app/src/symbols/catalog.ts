@@ -30,12 +30,12 @@ export const symbolCatalog: SymbolCatalogEntry[] = [
     ],
     defaultProperties: { label: 'L1' },
     defaultConnectionPoints: [
-      { id: 'cp1', position: { x: 4, y: 12 }, type: 'input' },
-      { id: 'cp2', position: { x: 20, y: 12 }, type: 'output' }
+      { id: 'cp1', position: { x: 0, y: 10 }, type: 'input' },
+      { id: 'cp2', position: { x: 20, y: 10 }, type: 'output' }
     ],
-    displaySize: { width: 40, height: 24 },
+    displaySize: { width: 20, height: 20 },
     strokeWidth: 2,
-    connectionPointRadius: 6,
+    connectionPointRadius: 3,
     selectionStrokeWidth: 3
   },
   {
@@ -48,12 +48,12 @@ export const symbolCatalog: SymbolCatalogEntry[] = [
     ],
     defaultProperties: { label: 'L2' },
     defaultConnectionPoints: [
-      { id: 'cp1', position: { x: 4, y: 12 }, type: 'input' },
-      { id: 'cp2', position: { x: 20, y: 12 }, type: 'output' }
+      { id: 'cp1', position: { x: 0, y: 10 }, type: 'input' },
+      { id: 'cp2', position: { x: 20, y: 10 }, type: 'output' }
     ],
-    displaySize: { width: 40, height: 24 },
+    displaySize: { width: 20, height: 20 },
     strokeWidth: 2,
-    connectionPointRadius: 6,
+    connectionPointRadius: 3,
     selectionStrokeWidth: 3
   },
   {
@@ -66,9 +66,13 @@ export const symbolCatalog: SymbolCatalogEntry[] = [
     ],
     defaultProperties: { label: 'L3' },
     defaultConnectionPoints: [
-      { id: 'cp1', position: { x: 4, y: 12 }, type: 'input' },
-      { id: 'cp2', position: { x: 20, y: 12 }, type: 'output' }
-    ]
+      { id: 'cp1', position: { x: 0, y: 10 }, type: 'input' },
+      { id: 'cp2', position: { x: 20, y: 10 }, type: 'output' }
+    ],
+    displaySize: { width: 20, height: 20 },
+    strokeWidth: 2,
+    connectionPointRadius: 3,
+    selectionStrokeWidth: 3
   },
   {
     type: SymbolType.PHASE_NEUTRAL,
@@ -80,9 +84,13 @@ export const symbolCatalog: SymbolCatalogEntry[] = [
     ],
     defaultProperties: { label: 'N' },
     defaultConnectionPoints: [
-      { id: 'cp1', position: { x: 4, y: 12 }, type: 'input' },
-      { id: 'cp2', position: { x: 20, y: 12 }, type: 'output' }
-    ]
+      { id: 'cp1', position: { x: 0, y: 10 }, type: 'input' },
+      { id: 'cp2', position: { x: 20, y: 10 }, type: 'output' }
+    ],
+    displaySize: { width: 20, height: 20 },
+    strokeWidth: 2,
+    connectionPointRadius: 3,
+    selectionStrokeWidth: 3
   },
   {
     type: SymbolType.AC,
@@ -94,9 +102,13 @@ export const symbolCatalog: SymbolCatalogEntry[] = [
     ],
     defaultProperties: { label: 'AC' },
     defaultConnectionPoints: [
-      { id: 'cp1', position: { x: 4, y: 12 }, type: 'input' },
-      { id: 'cp2', position: { x: 20, y: 12 }, type: 'output' }
-    ]
+      { id: 'cp1', position: { x: 0, y: 10 }, type: 'input' },
+      { id: 'cp2', position: { x: 20, y: 10 }, type: 'output' }
+    ],
+    displaySize: { width: 20, height: 20 },
+    strokeWidth: 2,
+    connectionPointRadius: 3,
+    selectionStrokeWidth: 3
   },
 
   // Wiring
@@ -112,9 +124,13 @@ export const symbolCatalog: SymbolCatalogEntry[] = [
     ],
     defaultProperties: { label: '' },
     defaultConnectionPoints: [
-      { id: 'cp1', position: { x: 12, y: 4 }, type: 'input' },
-      { id: 'cp2', position: { x: 12, y: 20 }, type: 'output' }
-    ]
+      { id: 'cp1', position: { x: 10, y: 0 }, type: 'input' },
+      { id: 'cp2', position: { x: 10, y: 20 }, type: 'output' }
+    ],
+    displaySize: { width: 20, height: 20 },
+    strokeWidth: 2,
+    connectionPointRadius: 3,
+    selectionStrokeWidth: 3
   },
   {
     type: SymbolType.CONDUCTOR_CROSS_CONNECTED,
@@ -128,11 +144,15 @@ export const symbolCatalog: SymbolCatalogEntry[] = [
     ],
     defaultProperties: { label: '' },
     defaultConnectionPoints: [
-      { id: 'cp1', position: { x: 4, y: 12 }, type: 'input' },
-      { id: 'cp2', position: { x: 20, y: 12 }, type: 'output' },
-      { id: 'cp3', position: { x: 12, y: 4 }, type: 'input' },
-      { id: 'cp4', position: { x: 12, y: 20 }, type: 'output' }
-    ]
+      { id: 'cp1', position: { x: 0, y: 10 }, type: 'input' },
+      { id: 'cp2', position: { x: 20, y: 10 }, type: 'output' },
+      { id: 'cp3', position: { x: 10, y: 0 }, type: 'input' },
+      { id: 'cp4', position: { x: 10, y: 20 }, type: 'output' }
+    ],
+    displaySize: { width: 20, height: 20 },
+    strokeWidth: 2,
+    connectionPointRadius: 3,
+    selectionStrokeWidth: 3
   },
   {
     type: SymbolType.CONDUCTOR_CROSS_NOT_CONNECTED,
@@ -145,11 +165,15 @@ export const symbolCatalog: SymbolCatalogEntry[] = [
     ],
     defaultProperties: { label: '' },
     defaultConnectionPoints: [
-      { id: 'cp1', position: { x: 4, y: 12 }, type: 'input' },
-      { id: 'cp2', position: { x: 20, y: 12 }, type: 'output' },
-      { id: 'cp3', position: { x: 12, y: 4 }, type: 'input' },
-      { id: 'cp4', position: { x: 12, y: 20 }, type: 'output' }
-    ]
+      { id: 'cp1', position: { x: 0, y: 10 }, type: 'input' },
+      { id: 'cp2', position: { x: 20, y: 10 }, type: 'output' },
+      { id: 'cp3', position: { x: 10, y: 0 }, type: 'input' },
+      { id: 'cp4', position: { x: 10, y: 20 }, type: 'output' }
+    ],
+    displaySize: { width: 20, height: 20 },
+    strokeWidth: 2,
+    connectionPointRadius: 3,
+    selectionStrokeWidth: 3
   },
   {
     type: SymbolType.CIRCUIT_MAIN,
@@ -161,9 +185,13 @@ export const symbolCatalog: SymbolCatalogEntry[] = [
     ],
     defaultProperties: { label: '' },
     defaultConnectionPoints: [
-      { id: 'cp1', position: { x: 4, y: 12 }, type: 'input' },
-      { id: 'cp2', position: { x: 20, y: 12 }, type: 'output' }
-    ]
+      { id: 'cp1', position: { x: 0, y: 10 }, type: 'input' },
+      { id: 'cp2', position: { x: 20, y: 10 }, type: 'output' }
+    ],
+    displaySize: { width: 20, height: 20 },
+    strokeWidth: 2,
+    connectionPointRadius: 3,
+    selectionStrokeWidth: 3
   },
   {
     type: SymbolType.CIRCUIT_CONTROL,
@@ -175,9 +203,13 @@ export const symbolCatalog: SymbolCatalogEntry[] = [
     ],
     defaultProperties: { label: '' },
     defaultConnectionPoints: [
-      { id: 'cp1', position: { x: 4, y: 12 }, type: 'input' },
-      { id: 'cp2', position: { x: 20, y: 12 }, type: 'output' }
-    ]
+      { id: 'cp1', position: { x: 0, y: 10 }, type: 'input' },
+      { id: 'cp2', position: { x: 20, y: 10 }, type: 'output' }
+    ],
+    displaySize: { width: 20, height: 20 },
+    strokeWidth: 2,
+    connectionPointRadius: 3,
+    selectionStrokeWidth: 3
   },
   {
     type: SymbolType.CIRCUIT_BREAKER_SINGLE_POLE,
@@ -194,13 +226,13 @@ export const symbolCatalog: SymbolCatalogEntry[] = [
     ],
     defaultProperties: {},
     defaultConnectionPoints: [
-      { id: 'top', position: { x: 100, y: 20 }, type: 'input' },
-      { id: 'bottom', position: { x: 100, y: 280 }, type: 'output' },
+      { id: 'top', position: { x: 10, y: 0 }, type: 'input' },
+      { id: 'bottom', position: { x: 10, y: 40 }, type: 'output' },
     ],
-    displaySize: { width: 80, height: 120 },
+    displaySize: { width: 20, height: 40 },
     strokeWidth: 2,
-    connectionPointRadius: 8,
-    selectionStrokeWidth: 4
+    connectionPointRadius: 3,
+    selectionStrokeWidth: 3
   },
   {
     type: SymbolType.CIRCUIT_BREAKER_DOUBLE_POLE,
@@ -780,185 +812,258 @@ export const symbolCatalog: SymbolCatalogEntry[] = [
 
   // Add these to your catalog.ts file after the existing symbols
 
-// CONNECTIONS TO SUPPLY
-{
-  type: SymbolType.CONNECTIONS_TO_SUPPLY,
-  name: 'Connections to supply',
-  category: 'Power',
-  viewBox: '0 0 400 200',
-  paths: [
-    { d: 'M50 30 H300', stroke: '#cc0000', strokeWidth: 3, fill: 'none' },
-    { d: 'M50 60 H300', stroke: '#ff8800', strokeWidth: 3, fill: 'none' },
-    { d: 'M50 90 H300', stroke: '#0066cc', strokeWidth: 3, fill: 'none' },
-    { d: 'M50 120 H300', stroke: '#000000', strokeWidth: 3, fill: 'none' },
-    { d: 'M70 30 m-5,0 a5,5 0 1,0 10,0 a5,5 0 1,0 -10,0', fill: '#000' },
-    { d: 'M110 60 m-5,0 a5,5 0 1,0 10,0 a5,5 0 1,0 -10,0', fill: '#000' },
-    { d: 'M150 90 m-5,0 a5,5 0 1,0 10,0 a5,5 0 1,0 -10,0', fill: '#000' },
-    { d: 'M220 120 m-5,0 a5,5 0 1,0 10,0 a5,5 0 1,0 -10,0', fill: '#000' },
-    { d: 'M70 35 V190', stroke: '#cc0000', strokeWidth: 2, fill: 'none' },
-    { d: 'M110 65 V190', stroke: '#ff8800', strokeWidth: 2, fill: 'none' },
-    { d: 'M150 95 V190', stroke: '#0066cc', strokeWidth: 2, fill: 'none' },
-    { d: 'M220 120 V190', stroke: '#000000', strokeWidth: 2, fill: 'none' },
-  ],
-  defaultProperties: {},
-  defaultConnectionPoints: [
-    { id: 'L1', position: { x: 70, y: 30 }, type: 'input' },
-    { id: 'L2', position: { x: 110, y: 60 }, type: 'input' },
-    { id: 'L3', position: { x: 150, y: 90 }, type: 'input' },
-    { id: 'N', position: { x: 220, y: 120 }, type: 'input' },
-  ],
-},
+  // CONNECTIONS TO SUPPLY
+  {
+    type: SymbolType.CONNECTIONS_TO_SUPPLY,
+    name: 'Connections to supply',
+    category: 'Power',
+    viewBox: '0 0 400 200',
+    paths: [
+      { d: 'M50 30 H300', stroke: '#cc0000', strokeWidth: 3, fill: 'none' },
+      { d: 'M50 60 H300', stroke: '#ff8800', strokeWidth: 3, fill: 'none' },
+      { d: 'M50 90 H300', stroke: '#0066cc', strokeWidth: 3, fill: 'none' },
+      { d: 'M50 120 H300', stroke: '#000000', strokeWidth: 3, fill: 'none' },
+      { d: 'M70 30 m-5,0 a5,5 0 1,0 10,0 a5,5 0 1,0 -10,0', fill: '#000' },
+      { d: 'M110 60 m-5,0 a5,5 0 1,0 10,0 a5,5 0 1,0 -10,0', fill: '#000' },
+      { d: 'M150 90 m-5,0 a5,5 0 1,0 10,0 a5,5 0 1,0 -10,0', fill: '#000' },
+      { d: 'M220 120 m-5,0 a5,5 0 1,0 10,0 a5,5 0 1,0 -10,0', fill: '#000' },
+      { d: 'M70 35 V190', stroke: '#cc0000', strokeWidth: 2, fill: 'none' },
+      { d: 'M110 65 V190', stroke: '#ff8800', strokeWidth: 2, fill: 'none' },
+      { d: 'M150 95 V190', stroke: '#0066cc', strokeWidth: 2, fill: 'none' },
+      { d: 'M220 120 V190', stroke: '#000000', strokeWidth: 2, fill: 'none' },
+    ],
+    defaultProperties: {},
+    defaultConnectionPoints: [
+      { id: 'L1', position: { x: 0, y: 10 }, type: 'input' },
+      { id: 'L2', position: { x: 0, y: 10 }, type: 'input' },
+      { id: 'L3', position: { x: 0, y: 10 }, type: 'input' },
+      { id: 'N', position: { x: 0, y: 10 }, type: 'input' },
+    ],
+    displaySize: { width: 20, height: 20 },
+    strokeWidth: 2,
+    connectionPointRadius: 3,
+    selectionStrokeWidth: 3
+  },
 
-// ENERGY METER
-{
-  type: SymbolType.ENERGY_METER_KWH,
-  name: 'Energy meter (kilo Watt hour meter)',
-  category: 'Power',
-  viewBox: '0 0 200 200',
-  paths: [
-    { d: 'M40 40 H160 V160 H40 Z', stroke: '#000', strokeWidth: 2, fill: 'none' },
-    { d: 'M40 80 H160', stroke: '#000', strokeWidth: 2, fill: 'none' },
-  ],
-  defaultProperties: {},
-  defaultConnectionPoints: [
-    { id: 'input', position: { x: 40, y: 60 }, type: 'input' },
-    { id: 'output', position: { x: 160, y: 60 }, type: 'output' },
-  ],
-},
+  // ENERGY METER
+  {
+    type: SymbolType.ENERGY_METER_KWH,
+    name: 'Energy meter (kilo Watt hour meter)',
+    category: 'Power',
+    viewBox: '0 0 200 200',
+    paths: [
+      { d: 'M40 40 H160 V160 H40 Z', stroke: '#000', strokeWidth: 2, fill: 'none' },
+      { d: 'M40 80 H160', stroke: '#000', strokeWidth: 2, fill: 'none' },
+    ],
+    defaultProperties: {},
+    defaultConnectionPoints: [
+      { id: 'input', position: { x: 0, y: 10 }, type: 'input' },
+      { id: 'output', position: { x: 20, y: 10 }, type: 'output' },
+    ],
+    displaySize: { width: 20, height: 20 },
+    strokeWidth: 2,
+    connectionPointRadius: 3,
+    selectionStrokeWidth: 3
+  },
 
-// EARTH CONNECTION
-{
-  type: SymbolType.EARTH_CONNECTION,
-  name: 'Earth connection',
-  category: 'Power',
-  viewBox: '0 0 200 150',
-  paths: [
-    { d: 'M100 30 V90', stroke: '#006600', strokeWidth: 3, fill: 'none' },
-    { d: 'M70 90 H130', stroke: '#006600', strokeWidth: 3, fill: 'none' },
-    { d: 'M80 105 H120', stroke: '#006600', strokeWidth: 3, fill: 'none' },
-    { d: 'M90 120 H110', stroke: '#006600', strokeWidth: 3, fill: 'none' },
-  ],
-  defaultProperties: {},
-  defaultConnectionPoints: [
-    { id: 'top', position: { x: 100, y: 30 }, type: 'input' },
-  ],
-},
+  // EARTH CONNECTION
+  {
+    type: SymbolType.EARTH_CONNECTION,
+    name: 'Earth connection',
+    category: 'Power',
+    viewBox: '0 0 200 150',
+    paths: [
+      { d: 'M100 30 V90', stroke: '#006600', strokeWidth: 3, fill: 'none' },
+      { d: 'M70 90 H130', stroke: '#006600', strokeWidth: 3, fill: 'none' },
+      { d: 'M80 105 H120', stroke: '#006600', strokeWidth: 3, fill: 'none' },
+      { d: 'M90 120 H110', stroke: '#006600', strokeWidth: 3, fill: 'none' },
+    ],
+    defaultProperties: {},
+    defaultConnectionPoints: [
+      { id: 'top', position: { x: 10, y: 0 }, type: 'input' },
+    ],
+    displaySize: { width: 20, height: 20 },
+    strokeWidth: 2,
+    connectionPointRadius: 3,
+    selectionStrokeWidth: 3
+  },
 
-// LAMP INCANDESCENT
-{
-  type: SymbolType.LAMP_INCANDESCENT_SYMBOL,
-  name: 'Lamp (incandescent)',
-  category: 'Power',
-  viewBox: '0 0 200 100',
-  paths: [
-    { d: 'M20 50 H65', stroke: '#000', strokeWidth: 2, fill: 'none' },
-    { d: 'M135 50 H180', stroke: '#000', strokeWidth: 2, fill: 'none' },
-    { d: 'M100 50 m-35,0 a35,35 0 1,0 70,0 a35,35 0 1,0 -70,0', stroke: '#000', strokeWidth: 2, fill: 'none' },
-    { d: 'M75 25 L125 75', stroke: '#000', strokeWidth: 2, fill: 'none' },
-    { d: 'M125 25 L75 75', stroke: '#000', strokeWidth: 2, fill: 'none' },
-  ],
-  defaultProperties: {},
-  defaultConnectionPoints: [
-    { id: 'left', position: { x: 20, y: 50 }, type: 'input' },
-    { id: 'right', position: { x: 180, y: 50 }, type: 'output' },
-  ],
-},
+  // LAMP INCANDESCENT
+  {
+    type: SymbolType.LAMP_INCANDESCENT_SYMBOL,
+    name: 'Lamp (incandescent)',
+    category: 'Power',
+    viewBox: '0 0 200 100',
+    paths: [
+      { d: 'M20 50 H65', stroke: '#000', strokeWidth: 2, fill: 'none' },
+      { d: 'M135 50 H180', stroke: '#000', strokeWidth: 2, fill: 'none' },
+      { d: 'M100 50 m-35,0 a35,35 0 1,0 70,0 a35,35 0 1,0 -70,0', stroke: '#000', strokeWidth: 2, fill: 'none' },
+      { d: 'M75 25 L125 75', stroke: '#000', strokeWidth: 2, fill: 'none' },
+      { d: 'M125 25 L75 75', stroke: '#000', strokeWidth: 2, fill: 'none' },
+    ],
+    defaultProperties: {},
+    defaultConnectionPoints: [
+      { id: 'left', position: { x: 0, y: 10 }, type: 'input' },
+      { id: 'right', position: { x: 20, y: 10 }, type: 'output' },
+    ],
+    displaySize: { width: 20, height: 20 },
+    strokeWidth: 2,
+    connectionPointRadius: 3,
+    selectionStrokeWidth: 3
+  },
 
-// LAMP INDICATION
-{
-  type: SymbolType.LAMP_INDICATION_SYMBOL,
-  name: 'Lamp (indication)',
-  category: 'Power',
-  viewBox: '0 0 200 120',
-  paths: [
-    { d: 'M20 65 H65', stroke: '#000', strokeWidth: 2, fill: 'none' },
-    { d: 'M135 65 H180', stroke: '#000', strokeWidth: 2, fill: 'none' },
-    { d: 'M100 65 m-35,0 a35,35 0 1,0 70,0 a35,35 0 1,0 -70,0', stroke: '#000', strokeWidth: 2, fill: 'none' },
-    { d: 'M75 40 L125 90', stroke: '#000', strokeWidth: 2, fill: 'none' },
-    { d: 'M125 40 L75 90', stroke: '#000', strokeWidth: 2, fill: 'none' },
-  ],
-  defaultProperties: {},
-  defaultConnectionPoints: [
-    { id: 'left', position: { x: 20, y: 65 }, type: 'input' },
-    { id: 'right', position: { x: 180, y: 65 }, type: 'output' },
-  ],
-},
+  // LAMP INDICATION
+  {
+    type: SymbolType.LAMP_INDICATION_SYMBOL,
+    name: 'Lamp (indication)',
+    category: 'Power',
+    viewBox: '0 0 200 120',
+    paths: [
+      { d: 'M20 65 H65', stroke: '#000', strokeWidth: 2, fill: 'none' },
+      { d: 'M135 65 H180', stroke: '#000', strokeWidth: 2, fill: 'none' },
+      { d: 'M100 65 m-35,0 a35,35 0 1,0 70,0 a35,35 0 1,0 -70,0', stroke: '#000', strokeWidth: 2, fill: 'none' },
+      { d: 'M75 40 L125 90', stroke: '#000', strokeWidth: 2, fill: 'none' },
+      { d: 'M125 40 L75 90', stroke: '#000', strokeWidth: 2, fill: 'none' },
+    ],
+    defaultProperties: {},
+    defaultConnectionPoints: [
+      { id: 'left', position: { x: 0, y: 10 }, type: 'input' },
+      { id: 'right', position: { x: 20, y: 10 }, type: 'output' },
+    ],
+    displaySize: { width: 20, height: 20 },
+    strokeWidth: 2,
+    connectionPointRadius: 3,
+    selectionStrokeWidth: 3
+  },
 
-// RESISTOR
-{
-  type: SymbolType.RESISTOR_SYMBOL,
-  name: 'Resistor',
-  category: 'Power',
-  viewBox: '0 0 300 80',
-  paths: [
-    { d: 'M30 40 m-6,0 a6,6 0 1,0 12,0 a6,6 0 1,0 -12,0', fill: '#000' },
-    { d: 'M36 40 H60', stroke: '#000', strokeWidth: 2, fill: 'none' },
-    { d: 'M60 40 L75 25 L90 55 L105 25 L120 55 L135 25 L150 55 L165 25 L180 40', stroke: '#000', strokeWidth: 2, fill: 'none' },
-    { d: 'M180 40 H204', stroke: '#000', strokeWidth: 2, fill: 'none' },
-    { d: 'M210 40 m-6,0 a6,6 0 1,0 12,0 a6,6 0 1,0 -12,0', fill: '#000' },
-  ],
-  defaultProperties: {},
-  defaultConnectionPoints: [
-    { id: 'left', position: { x: 30, y: 40 }, type: 'input' },
-    { id: 'right', position: { x: 210, y: 40 }, type: 'output' },
-  ],
-},
+  // RESISTOR
+  {
+    type: SymbolType.RESISTOR_SYMBOL,
+    name: 'Resistor',
+    category: 'Power',
+    viewBox: '0 0 300 80',
+    paths: [
+      { d: 'M30 40 m-6,0 a6,6 0 1,0 12,0 a6,6 0 1,0 -12,0', fill: '#000' },
+      { d: 'M36 40 H60', stroke: '#000', strokeWidth: 2, fill: 'none' },
+      { d: 'M60 40 L75 25 L90 55 L105 25 L120 55 L135 25 L150 55 L165 25 L180 40', stroke: '#000', strokeWidth: 2, fill: 'none' },
+      { d: 'M180 40 H204', stroke: '#000', strokeWidth: 2, fill: 'none' },
+      { d: 'M210 40 m-6,0 a6,6 0 1,0 12,0 a6,6 0 1,0 -12,0', fill: '#000' },
+    ],
+    defaultProperties: {},
+    defaultConnectionPoints: [
+      { id: 'left', position: { x: 0, y: 10 }, type: 'input' },
+      { id: 'right', position: { x: 20, y: 10 }, type: 'output' },
+    ],
+    displaySize: { width: 20, height: 20 },
+    strokeWidth: 2,
+    connectionPointRadius: 3,
+    selectionStrokeWidth: 3
+  },
 
-// CAPACITOR
-{
-  type: SymbolType.CAPACITOR_SYMBOL,
-  name: 'Capacitor',
-  category: 'Power',
-  viewBox: '0 0 200 200',
-  paths: [
-    { d: 'M100 30 V80', stroke: '#000', strokeWidth: 3, fill: 'none' },
-    { d: 'M60 80 H140', stroke: '#000', strokeWidth: 3, fill: 'none' },
-    { d: 'M60 100 H140', stroke: '#000', strokeWidth: 3, fill: 'none' },
-    { d: 'M100 100 V150', stroke: '#000', strokeWidth: 3, fill: 'none' },
-  ],
-  defaultProperties: {},
-  defaultConnectionPoints: [
-    { id: 'top', position: { x: 100, y: 30 }, type: 'input' },
-    { id: 'bottom', position: { x: 100, y: 150 }, type: 'output' },
-  ],
-},
+  // CAPACITOR
+  {
+    type: SymbolType.CAPACITOR_SYMBOL,
+    name: 'Capacitor',
+    category: 'Power',
+    viewBox: '0 0 200 200',
+    paths: [
+      { d: 'M100 30 V80', stroke: '#000', strokeWidth: 3, fill: 'none' },
+      { d: 'M60 80 H140', stroke: '#000', strokeWidth: 3, fill: 'none' },
+      { d: 'M60 100 H140', stroke: '#000', strokeWidth: 3, fill: 'none' },
+      { d: 'M100 100 V150', stroke: '#000', strokeWidth: 3, fill: 'none' },
+    ],
+    defaultProperties: {},
+    defaultConnectionPoints: [
+      { id: 'top', position: { x: 10, y: 0 }, type: 'input' },
+      { id: 'bottom', position: { x: 10, y: 20 }, type: 'output' },
+    ],
+    displaySize: { width: 20, height: 20 },
+    strokeWidth: 2,
+    connectionPointRadius: 3,
+    selectionStrokeWidth: 3
+  },
 
-// FUSE
-{
-  type: SymbolType.FUSE_SYMBOL,
-  name: 'Fuse',
-  category: 'Power',
-  viewBox: '0 0 200 250',
-  paths: [
-    { d: 'M100 30 V80', stroke: '#000', strokeWidth: 3, fill: 'none' },
-    { d: 'M80 80 H120 V170 H80 Z', stroke: '#000', strokeWidth: 3, fill: 'none' },
-    { d: 'M100 80 V170', stroke: '#000', strokeWidth: 3, fill: 'none' },
-    { d: 'M100 170 V220', stroke: '#000', strokeWidth: 3, fill: 'none' },
-  ],
-  defaultProperties: {},
-  defaultConnectionPoints: [
-    { id: 'top', position: { x: 100, y: 30 }, type: 'input' },
-    { id: 'bottom', position: { x: 100, y: 220 }, type: 'output' },
-  ],
-},
+  // FUSE
+  {
+    type: SymbolType.FUSE_SYMBOL,
+    name: 'Fuse',
+    category: 'Power',
+    viewBox: '0 0 200 250',
+    paths: [
+      { d: 'M100 30 V80', stroke: '#000', strokeWidth: 3, fill: 'none' },
+      { d: 'M80 80 H120 V170 H80 Z', stroke: '#000', strokeWidth: 3, fill: 'none' },
+      { d: 'M100 80 V170', stroke: '#000', strokeWidth: 3, fill: 'none' },
+      { d: 'M100 170 V220', stroke: '#000', strokeWidth: 3, fill: 'none' },
+    ],
+    defaultProperties: {},
+    defaultConnectionPoints: [
+      { id: 'top', position: { x: 10, y: 0 }, type: 'input' },
+      { id: 'bottom', position: { x: 10, y: 20 }, type: 'output' },
+    ],
+    displaySize: { width: 20, height: 20 },
+    strokeWidth: 2,
+    connectionPointRadius: 3,
+    selectionStrokeWidth: 3
+  },
 
-// SWITCH SINGLE POLE
-{
-  type: SymbolType.SWITCH_SINGLE_POLE,
-  name: 'Switch (single pole)',
-  category: 'Power',
-  viewBox: '0 0 200 250',
-  paths: [
-    { d: 'M100 30 V80', stroke: '#000', strokeWidth: 3, fill: 'none' },
-    { d: 'M100 80 m-6,0 a6,6 0 1,0 12,0 a6,6 0 1,0 -12,0', fill: '#000' },
-    { d: 'M125 75 L100 160', stroke: '#000', strokeWidth: 3, fill: 'none' },
-    { d: 'M100 160 m-6,0 a6,6 0 1,0 12,0 a6,6 0 1,0 -12,0', fill: '#000' },
-    { d: 'M100 160 V220', stroke: '#000', strokeWidth: 3, fill: 'none' },
-  ],
-  defaultProperties: {},
-  defaultConnectionPoints: [
-    { id: 'top', position: { x: 100, y: 30 }, type: 'input' },
-    { id: 'bottom', position: { x: 100, y: 220 }, type: 'output' },
-  ],
-},
+  // SWITCH SINGLE POLE
+  {
+    type: SymbolType.SWITCH_SINGLE_POLE,
+    name: 'Switch (single pole)',
+    category: 'Power',
+    viewBox: '0 0 200 250',
+    paths: [
+      { d: 'M100 30 V80', stroke: '#000', strokeWidth: 3, fill: 'none' },
+      { d: 'M100 80 m-6,0 a6,6 0 1,0 12,0 a6,6 0 1,0 -12,0', fill: '#000' },
+      { d: 'M125 75 L100 160', stroke: '#000', strokeWidth: 3, fill: 'none' },
+      { d: 'M100 160 m-6,0 a6,6 0 1,0 12,0 a6,6 0 1,0 -12,0', fill: '#000' },
+      { d: 'M100 160 V220', stroke: '#000', strokeWidth: 3, fill: 'none' },
+    ],
+    defaultProperties: {},
+    defaultConnectionPoints: [
+      { id: 'top', position: { x: 10, y: 0 }, type: 'input' },
+      { id: 'bottom', position: { x: 10, y: 20 }, type: 'output' },
+    ],
+    displaySize: { width: 20, height: 20 },
+    strokeWidth: 2,
+    connectionPointRadius: 3,
+    selectionStrokeWidth: 3
+  },
 ];
+
+// For each symbol in symbolCatalog, ensure displaySize, connectionPointRadius, strokeWidth, selectionStrokeWidth, and grid-aligned connection points
+const DEFAULT_SIZE = 10;
+symbolCatalog.forEach(symbol => {
+  // Set displaySize: scale down all symbols
+  if (!symbol.displaySize) {
+    symbol.displaySize = { width: DEFAULT_SIZE, height: DEFAULT_SIZE };
+  } else {
+    // If the symbol is much larger, scale down proportionally
+    const maxDim = Math.max(symbol.displaySize.width, symbol.displaySize.height);
+    if (maxDim > 2 * DEFAULT_SIZE) {
+      const scale = DEFAULT_SIZE / 20; // original default was 20
+      symbol.displaySize.width = Math.round(symbol.displaySize.width * scale);
+      symbol.displaySize.height = Math.round(symbol.displaySize.height * scale);
+    } else {
+      symbol.displaySize.width = DEFAULT_SIZE;
+      symbol.displaySize.height = DEFAULT_SIZE;
+    }
+  }
+  // Set connectionPointRadius, strokeWidth, selectionStrokeWidth
+  symbol.connectionPointRadius = 2;
+  symbol.strokeWidth = 1.5;
+  symbol.selectionStrokeWidth = 2.5;
+  // Snap connection points to edges (0 or width/height)
+  if (symbol.defaultConnectionPoints) {
+    const w = symbol.displaySize.width;
+    const h = symbol.displaySize.height;
+    symbol.defaultConnectionPoints = symbol.defaultConnectionPoints.map(cp => {
+      let x = cp.position.x;
+      let y = cp.position.y;
+      // Snap to 0 or w for x, 0 or h for y
+      x = (Math.abs(x - w) < Math.abs(x - 0)) ? w : 0;
+      y = (Math.abs(y - h) < Math.abs(y - 0)) ? h : 0;
+      return { ...cp, position: { x, y } };
+    });
+  }
+});

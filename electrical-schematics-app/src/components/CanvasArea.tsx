@@ -3,7 +3,7 @@ import { Stage, Layer, Rect, Text, Group, Line, Image as KonvaImage, Circle } fr
 import useImage from 'use-image';
 import murielLogo from '../assets/muriel-logo.png';
 import { useCanvasStore } from '../store/canvasStore';
-import { SymbolType, WireType } from '../types';
+import { SymbolType, WireType, Point } from '../types';
 import { symbolCatalog } from '../symbols/catalog';
 import SymbolElement from './SymbolElement';
 
@@ -49,6 +49,9 @@ interface CanvasAreaProps {
   wireToolActive?: boolean;
   selectToolActive?: boolean;
   handToolActive?: boolean;
+  textToolActive?: boolean;
+  dimensionToolActive?: boolean;
+  measureToolActive?: boolean;
   showGrid?: boolean;
   snapToGrid?: boolean;
   draggedSymbolType?: SymbolType | null;
@@ -56,7 +59,19 @@ interface CanvasAreaProps {
   setDragPreviewPosition?: (pos: { x: number; y: number } | null) => void;
 }
 
-const CanvasArea: React.FC<CanvasAreaProps> = ({ wireToolActive, selectToolActive, handToolActive, showGrid, snapToGrid, draggedSymbolType, dragPreviewPosition, setDragPreviewPosition }) => {
+const CanvasArea: React.FC<CanvasAreaProps> = ({ 
+  wireToolActive, 
+  selectToolActive, 
+  handToolActive, 
+  textToolActive,
+  dimensionToolActive,
+  measureToolActive,
+  showGrid, 
+  snapToGrid, 
+  draggedSymbolType, 
+  dragPreviewPosition, 
+  setDragPreviewPosition 
+}) => {
   const stageRef = useRef<any>(null);
   const [titleBlock, setTitleBlock] = useState(DEFAULT_TITLE_BLOCK);
   const [editingField, setEditingField] = useState<string | null>(null);
@@ -85,43 +100,313 @@ const CanvasArea: React.FC<CanvasAreaProps> = ({ wireToolActive, selectToolActiv
   // Drop zone highlight state
   const [isDragOver, setIsDragOver] = useState(false);
 
+  // New state for enhanced tools
+  const [measurementPoints, setMeasurementPoints] = useState<Point[]>([]);
+  const [textInputMode, setTextInputMode] = useState(false);
+  const [textInputPosition, setTextInputPosition] = useState<Point | null>(null);
+  const [dimensionStart, setDimensionStart] = useState<Point | null>(null);
+  
+  // New store selectors
+  const textElements = useCanvasStore((s) => s.textElements);
+  const dimensionElements = useCanvasStore((s) => s.dimensionElements);
+  const addTextElement = useCanvasStore((s) => s.addTextElement);
+  const addDimensionElement = useCanvasStore((s) => s.addDimensionElement);
+  const measureDistance = useCanvasStore((s) => s.measureDistance);
+  const measurementUnit = useCanvasStore((s) => s.measurementUnit);
+
+  // Find nearest symbol center to a point
+  const getNearestSymbolCenter = useCallback((point: { x: number; y: number }) => {
+    let minDist = Infinity;
+    let nearest = null;
+    symbols.forEach((symbol) => {
+      const catalogEntry = symbolCatalog.find(s => s.type === symbol.type);
+      const displaySize = catalogEntry?.displaySize || { width: 20, height: 20 };
+      const center = {
+        x: symbol.position.x + displaySize.width / 2,
+        y: symbol.position.y + displaySize.height / 2,
+      };
+      const dist = Math.hypot(center.x - point.x, center.y - point.y);
+      if (dist < minDist && dist <= SNAP_RADIUS) {
+        minDist = dist;
+        nearest = center;
+      }
+    });
+    return nearest;
+  }, [symbols]);
+
+  // Utility functions for coordinate transformation
+  const screenToCanvas = useCallback((screenX: number, screenY: number) => {
+    const stage = stageRef.current;
+    if (!stage) return { x: 0, y: 0 };
+    
+    const stageContainer = stage.container();
+    const boundingRect = stageContainer.getBoundingClientRect();
+    
+    const relativeX = screenX - boundingRect.left;
+    const relativeY = screenY - boundingRect.top;
+    
+    return {
+      x: (relativeX - pan.x) / zoom,
+      y: (relativeY - pan.y) / zoom
+    };
+  }, [pan, zoom]);
+
+  const canvasToScreen = useCallback((canvasX: number, canvasY: number) => {
+    return {
+      x: canvasX * zoom + pan.x,
+      y: canvasY * zoom + pan.y
+    };
+  }, [pan, zoom]);
+
+  // Improved drag preview with better positioning
+  const renderDragPreview = useCallback(() => {
+    if (!draggedSymbolType || !dragPreviewPosition) return null;
+    
+    const entry = symbolCatalog.find(s => s.type === draggedSymbolType);
+    if (!entry) return null;
+    
+    const displaySize = entry.displaySize || { width: 20, height: 20 };
+    const connectionPoints = entry.defaultConnectionPoints || [];
+    
+    // Transform screen position to canvas position
+    const canvasPos = screenToCanvas(dragPreviewPosition.x, dragPreviewPosition.y);
+    
+    // Calculate symbol position (center on cursor)
+    let symbolX = canvasPos.x - displaySize.width / 2;
+    let symbolY = canvasPos.y - displaySize.height / 2;
+    
+    // Snap to grid if enabled
+    if (snapToGrid) {
+      const grid = useCanvasStore.getState().gridSize || GRID_SPACING;
+      
+      if (connectionPoints.length > 0) {
+        const primaryCP = connectionPoints[0];
+        const cpX = primaryCP.position.x;
+        const cpY = primaryCP.position.y;
+        
+        const targetCPX = Math.round((symbolX + cpX) / grid) * grid;
+        const targetCPY = Math.round((symbolY + cpY) / grid) * grid;
+        
+        symbolX = targetCPX - cpX;
+        symbolY = targetCPY - cpY;
+      } else {
+        symbolX = Math.round(symbolX / grid) * grid;
+        symbolY = Math.round(symbolY / grid) * grid;
+      }
+    }
+    
+    // Transform back to screen coordinates for preview
+    const screenPos = canvasToScreen(symbolX, symbolY);
+    
+    return (
+      <div
+        style={{
+          position: 'fixed',
+          left: screenPos.x,
+          top: screenPos.y,
+          width: displaySize.width * zoom,
+          height: displaySize.height * zoom,
+          border: '2px dashed #1976d2',
+          borderRadius: '4px',
+          backgroundColor: 'rgba(25, 118, 210, 0.1)',
+          pointerEvents: 'none',
+          zIndex: 1000,
+          transform: 'translate(-50%, -50%)',
+          transition: 'all 0.1s ease-out',
+        }}
+      >
+        {/* Connection point indicators */}
+        {connectionPoints.map((cp, index) => {
+          const cpScreenX = screenPos.x + (cp.position.x - displaySize.width / 2) * zoom;
+          const cpScreenY = screenPos.y + (cp.position.y - displaySize.height / 2) * zoom;
+          
+          return (
+            <div
+              key={index}
+              style={{
+                position: 'absolute',
+                left: cpScreenX,
+                top: cpScreenY,
+                width: 6 * zoom,
+                height: 6 * zoom,
+                backgroundColor: '#43a047',
+                border: '1px solid #fff',
+                borderRadius: '50%',
+                transform: 'translate(-50%, -50%)',
+                pointerEvents: 'none',
+              }}
+            />
+          );
+        })}
+      </div>
+    );
+  }, [draggedSymbolType, dragPreviewPosition, snapToGrid, zoom, screenToCanvas, canvasToScreen]);
+
   // Handle drop from SymbolLibrary
   const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     const symbolType = e.dataTransfer.getData('application/x-symbol-type') as SymbolType;
     if (!symbolType) return;
-    let boundingRect = undefined;
-    try {
-      boundingRect = stageRef.current?.container().getBoundingClientRect();
-    } catch {}
-    if (!boundingRect) {
-      // fallback: use event target
-      const target = e.target as HTMLElement;
-      boundingRect = target.getBoundingClientRect ? target.getBoundingClientRect() : { left: 0, top: 0 };
-    }
-    let x = e.clientX - boundingRect.left;
-    let y = e.clientY - boundingRect.top;
+    
+    // Get the stage and its container for proper coordinate transformation
+    const stage = stageRef.current;
+    if (!stage) return;
+    
+    const stageContainer = stage.container();
+    const boundingRect = stageContainer.getBoundingClientRect();
+    
+    // Transform screen coordinates to canvas coordinates
+    const screenX = e.clientX - boundingRect.left;
+    const screenY = e.clientY - boundingRect.top;
+    
+    // Convert to canvas coordinates (accounting for zoom and pan)
+    const canvasX = (screenX - pan.x) / zoom;
+    const canvasY = (screenY - pan.y) / zoom;
+    
+    // Get symbol catalog entry for proper positioning
+    const catalogEntry = symbolCatalog.find(s => s.type === symbolType);
+    if (!catalogEntry) return;
+    
+    const displaySize = catalogEntry.displaySize || { width: 20, height: 20 };
+    
+    // Calculate initial position (center the symbol on cursor)
+    let x = canvasX - displaySize.width / 2;
+    let y = canvasY - displaySize.height / 2;
+    
     // Snap to grid if enabled
     if (snapToGrid) {
       const grid = useCanvasStore.getState().gridSize || GRID_SPACING;
-      x = Math.round(x / grid) * grid;
-      y = Math.round(y / grid) * grid;
+      
+      // Snap based on symbol's connection points to ensure they align with grid
+      const connectionPoints = catalogEntry.defaultConnectionPoints;
+      if (connectionPoints.length > 0) {
+        // Find the primary connection point (usually the first one)
+        const primaryCP = connectionPoints[0];
+        const cpX = primaryCP.position.x;
+        const cpY = primaryCP.position.y;
+        
+        // Calculate where the connection point should be on the grid
+        const targetCPX = Math.round((x + cpX) / grid) * grid;
+        const targetCPY = Math.round((y + cpY) / grid) * grid;
+        
+        // Adjust symbol position so connection point aligns with grid
+        x = targetCPX - cpX;
+        y = targetCPY - cpY;
+      } else {
+        // Fallback: snap symbol center to grid
+        x = Math.round(x / grid) * grid;
+        y = Math.round(y / grid) * grid;
+      }
     }
-    if (
-      x > BORDER_THICKNESS &&
-      y > BORDER_THICKNESS &&
-      x < PAPER_WIDTH - BORDER_THICKNESS &&
-      y < PAPER_HEIGHT - BORDER_THICKNESS - TITLE_BLOCK_HEIGHT
-    ) {
-      addSymbol({
-        type: symbolType,
-        position: { x, y },
-        rotation: 0,
-        scale: 1,
-        properties: {},
-        connections: [],
-      });
+    
+    // Check bounds and prevent overlapping with existing symbols
+    const symbolBounds = {
+      x: x,
+      y: y,
+      width: displaySize.width,
+      height: displaySize.height
+    };
+    
+    // Check if within drawing area bounds
+    const withinBounds = (
+      x >= BORDER_THICKNESS &&
+      y >= BORDER_THICKNESS &&
+      x + displaySize.width <= PAPER_WIDTH - BORDER_THICKNESS &&
+      y + displaySize.height <= PAPER_HEIGHT - BORDER_THICKNESS - TITLE_BLOCK_HEIGHT
+    );
+    
+    if (!withinBounds) {
+      // Try to find a valid position nearby
+      const grid = snapToGrid ? (useCanvasStore.getState().gridSize || GRID_SPACING) : 10;
+      let foundValidPosition = false;
+      
+      // Search in a spiral pattern around the original position
+      for (let radius = 1; radius <= 5 && !foundValidPosition; radius++) {
+        for (let angle = 0; angle < 2 * Math.PI && !foundValidPosition; angle += Math.PI / 4) {
+          const testX = x + Math.cos(angle) * radius * grid;
+          const testY = y + Math.sin(angle) * radius * grid;
+          
+          const testBounds = {
+            x: testX,
+            y: testY,
+            width: displaySize.width,
+            height: displaySize.height
+          };
+          
+          if (
+            testX >= BORDER_THICKNESS &&
+            testY >= BORDER_THICKNESS &&
+            testX + displaySize.width <= PAPER_WIDTH - BORDER_THICKNESS &&
+            testY + displaySize.height <= PAPER_HEIGHT - BORDER_THICKNESS - TITLE_BLOCK_HEIGHT
+          ) {
+            x = testX;
+            y = testY;
+            foundValidPosition = true;
+          }
+        }
+      }
+      
+      if (!foundValidPosition) {
+        // Still add the symbol but warn the user
+        console.warn('Symbol placed outside drawing area bounds');
+      }
     }
+    
+    // Check for collisions with existing symbols
+    const collisionMargin = 5;
+    const hasCollision = symbols.some(existingSymbol => {
+      const existingEntry = symbolCatalog.find(s => s.type === existingSymbol.type);
+      const existingSize = existingEntry?.displaySize || { width: 20, height: 20 };
+      
+      return (
+        x < existingSymbol.position.x + existingSize.width + collisionMargin &&
+        x + displaySize.width + collisionMargin > existingSymbol.position.x &&
+        y < existingSymbol.position.y + existingSize.height + collisionMargin &&
+        y + displaySize.height + collisionMargin > existingSymbol.position.y
+      );
+    });
+    
+    if (hasCollision) {
+      // Try to find a non-colliding position
+      const grid = snapToGrid ? (useCanvasStore.getState().gridSize || GRID_SPACING) : 10;
+      let foundNonCollidingPosition = false;
+      
+      for (let radius = 1; radius <= 3 && !foundNonCollidingPosition; radius++) {
+        for (let angle = 0; angle < 2 * Math.PI && !foundNonCollidingPosition; angle += Math.PI / 6) {
+          const testX = x + Math.cos(angle) * radius * grid;
+          const testY = y + Math.sin(angle) * radius * grid;
+          
+          const testCollision = symbols.some(existingSymbol => {
+            const existingEntry = symbolCatalog.find(s => s.type === existingSymbol.type);
+            const existingSize = existingEntry?.displaySize || { width: 20, height: 20 };
+            
+            return (
+              testX < existingSymbol.position.x + existingSize.width + collisionMargin &&
+              testX + displaySize.width + collisionMargin > existingSymbol.position.x &&
+              testY < existingSymbol.position.y + existingSize.height + collisionMargin &&
+              testY + displaySize.height + collisionMargin > existingSymbol.position.y
+            );
+          });
+          
+          if (!testCollision) {
+            x = testX;
+            y = testY;
+            foundNonCollidingPosition = true;
+          }
+        }
+      }
+    }
+    
+    // Add the symbol
+    addSymbol({
+      type: symbolType,
+      position: { x, y },
+      rotation: 0,
+      scale: 1,
+      properties: catalogEntry.defaultProperties || {},
+      connections: [],
+    });
+    
     e.dataTransfer.clearData();
     setIsDragOver(false);
     if (setDragPreviewPosition) setDragPreviewPosition(null);
@@ -217,9 +502,51 @@ const CanvasArea: React.FC<CanvasAreaProps> = ({ wireToolActive, selectToolActiv
     return lines;
   };
 
+  // Add viewport culling utility
+  const isInViewport = (element: { x: number; y: number; width?: number; height?: number }, viewport: { x: number; y: number; width: number; height: number }) => {
+    const elementWidth = element.width || 40;
+    const elementHeight = element.height || 40;
+    return (
+      element.x + elementWidth >= viewport.x &&
+      element.x <= viewport.x + viewport.width &&
+      element.y + elementHeight >= viewport.y &&
+      element.y <= viewport.y + viewport.height
+    );
+  };
+
+  // Calculate viewport for culling
+  const viewport = useMemo(() => {
+    const padding = 100; // Extra padding to prevent pop-in
+    return {
+      x: -pan.x / zoom - padding,
+      y: -pan.y / zoom - padding,
+      width: containerSize.width / zoom + padding * 2,
+      height: containerSize.height / zoom + padding * 2,
+    };
+  }, [pan, zoom, containerSize]);
+
+  // Filter symbols and wires for viewport culling
+  const visibleSymbols = useMemo(() => 
+    symbols.filter(symbol => 
+      isInViewport(symbol.position, viewport)
+    ), [symbols, viewport]
+  );
+
+  const visibleWires = useMemo(() => 
+    wires.filter(wire => {
+      const wireBounds = {
+        x: Math.min(wire.startPoint.x, wire.endPoint.x),
+        y: Math.min(wire.startPoint.y, wire.endPoint.y),
+        width: Math.abs(wire.endPoint.x - wire.startPoint.x),
+        height: Math.abs(wire.endPoint.y - wire.startPoint.y),
+      };
+      return isInViewport(wireBounds, viewport);
+    }), [wires, viewport]
+  );
+
   // Render wires (selectable and moveable)
   const renderWires = () =>
-    wires.map((wire) => {
+    visibleWires.map((wire) => {
       const isSelected = selectedElements.includes(wire.id);
       return (
         <Group
@@ -309,13 +636,102 @@ const CanvasArea: React.FC<CanvasAreaProps> = ({ wireToolActive, selectToolActiv
   }, [selectToolActive, isPanning, pendingPan, selectElement]);
 
   const renderSymbols = () =>
-    symbols.map((symbol) => (
+    visibleSymbols.map((symbol) => (
       <Group
         key={symbol.id}
         draggable={selectToolActive || handToolActive}
+        onDragStart={(e) => {
+          // Store original position for potential undo
+          e.target.setAttr('originalPosition', { x: symbol.position.x, y: symbol.position.y });
+        }}
+        onDragMove={(e) => {
+          // Provide real-time visual feedback during drag
+          const group = e.target;
+          const pos = group.position();
+          
+          // Show grid snapping preview if enabled
+          if (snapToGrid) {
+            const grid = useCanvasStore.getState().gridSize || GRID_SPACING;
+            const catalogEntry = symbolCatalog.find(s => s.type === symbol.type);
+            const displaySize = catalogEntry?.displaySize || { width: 20, height: 20 };
+            
+            // Snap to grid during drag
+            const snappedX = Math.round(pos.x / grid) * grid;
+            const snappedY = Math.round(pos.y / grid) * grid;
+            
+            // Update position with snapping
+            group.position({ x: snappedX, y: snappedY });
+          }
+        }}
         onDragEnd={e => {
-          const { x, y } = e.target.position();
+          const group = e.target;
+          let { x, y } = group.position();
+          
+          // Get symbol info for bounds checking
+          const catalogEntry = symbolCatalog.find(s => s.type === symbol.type);
+          const displaySize = catalogEntry?.displaySize || { width: 20, height: 20 };
+          
+          // Snap to grid if enabled
+          if (snapToGrid) {
+            const grid = useCanvasStore.getState().gridSize || GRID_SPACING;
+            
+            // Snap based on connection points for better alignment
+            const connectionPoints = catalogEntry?.defaultConnectionPoints || [];
+            if (connectionPoints.length > 0) {
+              const primaryCP = connectionPoints[0];
+              const cpX = primaryCP.position.x;
+              const cpY = primaryCP.position.y;
+              
+              const targetCPX = Math.round((x + cpX) / grid) * grid;
+              const targetCPY = Math.round((y + cpY) / grid) * grid;
+              
+              x = targetCPX - cpX;
+              y = targetCPY - cpY;
+            } else {
+              x = Math.round(x / grid) * grid;
+              y = Math.round(y / grid) * grid;
+            }
+          }
+          
+          // Check bounds and constrain to drawing area
+          const minX = BORDER_THICKNESS;
+          const minY = BORDER_THICKNESS;
+          const maxX = PAPER_WIDTH - BORDER_THICKNESS - displaySize.width;
+          const maxY = PAPER_HEIGHT - BORDER_THICKNESS - TITLE_BLOCK_HEIGHT - displaySize.height;
+          
+          x = Math.max(minX, Math.min(maxX, x));
+          y = Math.max(minY, Math.min(maxY, y));
+          
+          // Check for collisions with other symbols (excluding self)
+          const collisionMargin = 2;
+          const hasCollision = symbols.some(otherSymbol => {
+            if (otherSymbol.id === symbol.id) return false;
+            
+            const otherEntry = symbolCatalog.find(s => s.type === otherSymbol.type);
+            const otherSize = otherEntry?.displaySize || { width: 20, height: 20 };
+            
+            return (
+              x < otherSymbol.position.x + otherSize.width + collisionMargin &&
+              x + displaySize.width + collisionMargin > otherSymbol.position.x &&
+              y < otherSymbol.position.y + otherSize.height + collisionMargin &&
+              y + displaySize.height + collisionMargin > otherSymbol.position.y
+            );
+          });
+          
+          if (hasCollision) {
+            // Revert to original position if collision detected
+            const originalPos = group.getAttr('originalPosition');
+            if (originalPos) {
+              x = originalPos.x;
+              y = originalPos.y;
+            }
+          }
+          
+          // Update symbol position
           moveSymbol(symbol.id, { x, y });
+          
+          // Reset group position to 0 since we're using absolute positioning
+          group.position({ x: 0, y: 0 });
         }}
         onClick={() => handleSymbolClick(symbol.id)}
       >
@@ -420,24 +836,6 @@ const CanvasArea: React.FC<CanvasAreaProps> = ({ wireToolActive, selectToolActiv
     });
   };
 
-  // Find nearest symbol center to a point
-  const getNearestSymbolCenter = useCallback((point: { x: number; y: number }) => {
-    let minDist = Infinity;
-    let nearest = null;
-    symbols.forEach((symbol) => {
-      const center = {
-        x: symbol.position.x + 20, // 40x40 symbol
-        y: symbol.position.y + 20,
-      };
-      const dist = Math.hypot(center.x - point.x, center.y - point.y);
-      if (dist < minDist && dist <= SNAP_RADIUS) {
-        minDist = dist;
-        nearest = center;
-      }
-    });
-    return nearest;
-  }, [symbols]);
-
   // ESC to cancel wire drawing
   useEffect(() => {
     if (!wireToolActive) return;
@@ -496,51 +894,89 @@ const CanvasArea: React.FC<CanvasAreaProps> = ({ wireToolActive, selectToolActiv
   }, [handToolActive, spacePressed]);
 
   const handleStageMouseDown = useCallback((e: any) => {
+    const stage = e.target.getStage();
+    const pointer = stage.getPointerPosition();
+    if (!pointer) return;
+
+    // Check if click is in drawing area
+    const inDrawingArea = (
+      pointer.x > BORDER_THICKNESS &&
+      pointer.y > BORDER_THICKNESS &&
+      pointer.x < PAPER_WIDTH - BORDER_THICKNESS &&
+      pointer.y < PAPER_HEIGHT - BORDER_THICKNESS - TITLE_BLOCK_HEIGHT
+    );
+
+    if (!inDrawingArea) return;
+
+    // Text tool
+    if (textToolActive) {
+      setTextInputPosition(pointer);
+      setTextInputMode(true);
+      return;
+    }
+
+    // Dimension tool
+    if (dimensionToolActive) {
+      if (!dimensionStart) {
+        setDimensionStart(pointer);
+      } else {
+        addDimensionElement({
+          startPoint: dimensionStart,
+          endPoint: pointer,
+          offset: 20,
+          text: `${Math.round(Math.hypot(pointer.x - dimensionStart.x, pointer.y - dimensionStart.y))}${measurementUnit}`,
+          style: 'linear'
+        });
+        setDimensionStart(null);
+      }
+      return;
+    }
+
+    // Measure tool
+    if (measureToolActive) {
+      setMeasurementPoints(prev => [...prev, pointer]);
+      if (measurementPoints.length === 1) {
+        const result = measureDistance(measurementPoints[0], pointer);
+        console.log(`Distance: ${result.distance.toFixed(2)} ${result.unit}`);
+        setMeasurementPoints([]);
+      }
+      return;
+    }
+
     // If wire tool is active, always process wire drawing logic first
     if (wireToolActive) {
-      const stage = e.target.getStage();
-      const pointer = stage.getPointerPosition();
-      if (!pointer) return;
-      // Only allow drawing in the drawing area (not over title block)
-      if (
-        pointer.x > BORDER_THICKNESS &&
-        pointer.y > BORDER_THICKNESS &&
-        pointer.x < PAPER_WIDTH - BORDER_THICKNESS &&
-        pointer.y < PAPER_HEIGHT - BORDER_THICKNESS - TITLE_BLOCK_HEIGHT
-      ) {
-        let snap = getNearestSymbolCenter(pointer) || pointer;
+      let snap = getNearestSymbolCenter(pointer) || pointer;
+      if (snapToGrid) {
+        const grid = useCanvasStore.getState().gridSize || GRID_SPACING;
+        snap = {
+          x: Math.round(snap.x / grid) * grid,
+          y: Math.round(snap.y / grid) * grid,
+        };
+      }
+      if (!drawingWire.start) {
+        setDrawingWire({ start: snap, mouse: snap });
+      } else {
+        // Finish wire
+        let startPoint = drawingWire.start;
         if (snapToGrid) {
           const grid = useCanvasStore.getState().gridSize || GRID_SPACING;
-          snap = {
-            x: Math.round(snap.x / grid) * grid,
-            y: Math.round(snap.y / grid) * grid,
+          startPoint = {
+            x: Math.round(startPoint.x / grid) * grid,
+            y: Math.round(startPoint.y / grid) * grid,
           };
         }
-        if (!drawingWire.start) {
-          setDrawingWire({ start: snap, mouse: snap });
-        } else {
-          // Finish wire
-          let startPoint = drawingWire.start;
-          if (snapToGrid) {
-            const grid = useCanvasStore.getState().gridSize || GRID_SPACING;
-            startPoint = {
-              x: Math.round(startPoint.x / grid) * grid,
-              y: Math.round(startPoint.y / grid) * grid,
-            };
-          }
-          addWire({
-            startPoint,
-            endPoint: snap,
-            wireType: WireType.CONTROL,
-            properties: {
-              color: '#000000',
-              thickness: 2,
-              material: 'copper',
-              insulation: 'PVC',
-            },
-          });
-          setDrawingWire({ start: null, mouse: null });
-        }
+        addWire({
+          startPoint,
+          endPoint: snap,
+          wireType: WireType.CONTROL,
+          properties: {
+            color: '#000000',
+            thickness: 2,
+            material: 'copper',
+            insulation: 'PVC',
+          },
+        });
+        setDrawingWire({ start: null, mouse: null });
       }
       return;
     }
@@ -551,7 +987,7 @@ const CanvasArea: React.FC<CanvasAreaProps> = ({ wireToolActive, selectToolActiv
       setLastPointer(pointer);
       return;
     }
-  }, [wireToolActive, drawingWire, addWire, setDrawingWire, getNearestSymbolCenter, shouldStartPan, setPendingPan, setLastPointer, snapToGrid]);
+  }, [textToolActive, dimensionToolActive, measureToolActive, measurementPoints, measureDistance, measurementUnit, addDimensionElement, wireToolActive, drawingWire, addWire, setDrawingWire, getNearestSymbolCenter, shouldStartPan, setPendingPan, setLastPointer, snapToGrid]);
 
   const handleStageMouseMove = useCallback((e: any) => {
     const pointer = e.target.getStage().getPointerPosition();
@@ -626,19 +1062,85 @@ const CanvasArea: React.FC<CanvasAreaProps> = ({ wireToolActive, selectToolActiv
   }, [setZoom, setPan]);
 
   // Memoize grid lines
-  const gridLines = useMemo(() => renderGrid(), []);
+  const gridLines = useMemo(() => renderGrid(), [renderGrid]);
   // Memoize wires
-  const wiresMemo = useMemo(() => renderWires(), [wires, selectedElements, selectToolActive, handToolActive]);
+  const wiresMemo = useMemo(() => renderWires(), [renderWires]);
   // Memoize symbols
-  const symbolsMemo = useMemo(() => renderSymbols(), [symbols, selectedElements, selectToolActive, handToolActive]);
+  const symbolsMemo = useMemo(() => renderSymbols(), [renderSymbols]);
   // Memoize title block grid and fields
-  const titleBlockGridMemo = useMemo(() => renderTitleBlockGrid(), []);
-  const titleBlockFieldsMemo = useMemo(() => renderTitleBlockFields(), [titleBlock, logoImage]);
+  const titleBlockGridMemo = useMemo(() => renderTitleBlockGrid(), [renderTitleBlockGrid]);
+  const titleBlockFieldsMemo = useMemo(() => renderTitleBlockFields(), [renderTitleBlockFields]);
   // Memoize event handlers
-  const handleDropMemo = useCallback(handleDrop, [snapToGrid, addSymbol, setDragPreviewPosition]);
-  const handleDragOverMemo = useCallback(handleDragOver, [isDragOver]);
-  const handleStageMouseDownMemo = useCallback(handleStageMouseDown, [wireToolActive, drawingWire, addWire, setDrawingWire, getNearestSymbolCenter, shouldStartPan, setPendingPan, setLastPointer, snapToGrid]);
-  const handleStageMouseMoveMemo = useCallback(handleStageMouseMove, [pendingPan, isPanning, lastPointer, pan, setPan, wireToolActive, snapToGrid, drawingWire.start, getNearestSymbolCenter]);
+  const handleDropMemo = useCallback(handleDrop, [handleDrop]);
+  const handleDragOverMemo = useCallback(handleDragOver, [handleDragOver]);
+  const handleStageMouseDownMemo = useCallback(handleStageMouseDown, [handleStageMouseDown]);
+  const handleStageMouseMoveMemo = useCallback(handleStageMouseMove, [handleStageMouseMove]);
+
+  // Render text elements
+  const renderTextElements = () =>
+    textElements.map((textElement) => (
+      <Group
+        key={textElement.id}
+        draggable={selectToolActive}
+        onDragEnd={e => {
+          const { x, y } = e.target.position();
+          // Update text element position
+        }}
+        onClick={selectToolActive ? () => selectElement(textElement.id) : undefined}
+      >
+        <Text
+          x={textElement.position.x}
+          y={textElement.position.y}
+          text={textElement.text}
+          fontSize={textElement.fontSize}
+          fontFamily={textElement.fontFamily}
+          fill={textElement.color}
+          rotation={textElement.rotation}
+          align={textElement.alignment}
+          selected={selectedElements.includes(textElement.id)}
+        />
+      </Group>
+    ));
+
+  // Render dimension elements
+  const renderDimensionElements = () =>
+    dimensionElements.map((dimElement) => (
+      <Group key={dimElement.id}>
+        <Line
+          points={[dimElement.startPoint.x, dimElement.startPoint.y, dimElement.endPoint.x, dimElement.endPoint.y]}
+          stroke="#666"
+          strokeWidth={1}
+          dash={[5, 5]}
+        />
+        <Text
+          x={(dimElement.startPoint.x + dimElement.endPoint.x) / 2}
+          y={(dimElement.startPoint.y + dimElement.endPoint.y) / 2 - dimElement.offset}
+          text={dimElement.text}
+          fontSize={12}
+          fill="#333"
+          align="center"
+        />
+      </Group>
+    ));
+
+  // Render measurement points
+  const renderMeasurementPoints = () =>
+    measurementPoints.map((point, index) => (
+      <Circle
+        key={index}
+        x={point.x}
+        y={point.y}
+        radius={4}
+        fill="#1976d2"
+        stroke="#fff"
+        strokeWidth={2}
+      />
+    ));
+
+  // Update memoized values
+  const textElementsMemo = useMemo(() => renderTextElements(), [renderTextElements]);
+  const dimensionElementsMemo = useMemo(() => renderDimensionElements(), [renderDimensionElements]);
+  const measurementPointsMemo = useMemo(() => renderMeasurementPoints(), [renderMeasurementPoints]);
 
   // Main render
   return (
@@ -649,7 +1151,7 @@ const CanvasArea: React.FC<CanvasAreaProps> = ({ wireToolActive, selectToolActiv
         height: '100%',
         position: 'relative',
         background: '#222',
-        cursor: isPanning ? 'grabbing' : spacePressed ? 'grab' : selectToolActive ? 'pointer' : handToolActive ? 'grab' : wireToolActive ? 'crosshair' : 'default',
+        cursor: isPanning ? 'grabbing' : spacePressed ? 'grab' : selectToolActive ? 'pointer' : handToolActive ? 'grab' : wireToolActive ? 'crosshair' : textToolActive ? 'text' : dimensionToolActive ? 'crosshair' : measureToolActive ? 'crosshair' : 'default',
       }}
       onDrop={handleDropMemo}
       onDragOver={handleDragOverMemo}
@@ -676,54 +1178,92 @@ const CanvasArea: React.FC<CanvasAreaProps> = ({ wireToolActive, selectToolActiv
       {draggedSymbolType && dragPreviewPosition && (() => {
         const entry = symbolCatalog.find(s => s.type === draggedSymbolType);
         if (!entry) return null;
-        // Offset so cursor is in the center of the preview
-        const offset = 16;
-        // Snap preview position to grid if enabled
-        let snapX = dragPreviewPosition.x;
-        let snapY = dragPreviewPosition.y;
+        
+        const displaySize = entry.displaySize || { width: 20, height: 20 };
+        const connectionPoints = entry.defaultConnectionPoints || [];
+        
+        // Get stage for coordinate transformation
+        const stage = stageRef.current;
+        if (!stage) return null;
+        
+        const stageContainer = stage.container();
+        const boundingRect = stageContainer.getBoundingClientRect();
+        
+        // Transform screen coordinates to canvas coordinates
+        const screenX = dragPreviewPosition.x - boundingRect.left;
+        const screenY = dragPreviewPosition.y - boundingRect.top;
+        const canvasX = (screenX - pan.x) / zoom;
+        const canvasY = (screenY - pan.y) / zoom;
+        
+        // Calculate symbol position (center on cursor)
+        let symbolX = canvasX - displaySize.width / 2;
+        let symbolY = canvasY - displaySize.height / 2;
+        
+        // Snap to grid if enabled
         if (snapToGrid) {
           const grid = useCanvasStore.getState().gridSize || GRID_SPACING;
-          snapX = Math.round(snapX / grid) * grid;
-          snapY = Math.round(snapY / grid) * grid;
+          
+          if (connectionPoints.length > 0) {
+            const primaryCP = connectionPoints[0];
+            const cpX = primaryCP.position.x;
+            const cpY = primaryCP.position.y;
+            
+            const targetCPX = Math.round((symbolX + cpX) / grid) * grid;
+            const targetCPY = Math.round((symbolY + cpY) / grid) * grid;
+            
+            symbolX = targetCPX - cpX;
+            symbolY = targetCPY - cpY;
+          } else {
+            symbolX = Math.round(symbolX / grid) * grid;
+            symbolY = Math.round(symbolY / grid) * grid;
+          }
         }
+        
+        // Transform back to screen coordinates for preview
+        const previewX = symbolX * zoom + pan.x;
+        const previewY = symbolY * zoom + pan.y;
+        
         return (
-          <>
-            {/* Snap-to-grid highlight */}
-            {snapToGrid && (
-              <div
-                style={{
-                  position: 'fixed',
-                  left: snapX - 20,
-                  top: snapY - 20,
-                  width: 40,
-                  height: 40,
-                  background: '#1976d2',
-                  opacity: 0.12,
-                  borderRadius: 8,
-                  pointerEvents: 'none',
-                  zIndex: 999,
-                  boxShadow: '0 0 0 2px #1976d2',
-                  transition: 'left 0.05s, top 0.05s',
-                }}
-              />
-            )}
-            <svg
-              width={32}
-              height={32}
-              viewBox="0 0 24 24"
-              style={{
-                position: 'fixed',
-                left: snapX - offset,
-                top: snapY - offset,
-                pointerEvents: 'none',
-                zIndex: 1000,
-                opacity: 0.85,
-                filter: 'drop-shadow(0 2px 8px rgba(0,0,0,0.15))',
-              }}
-            >
-              <path d={entry.svgPath} stroke="#1976d2" strokeWidth={2} fill="none" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          </>
+          <div
+            style={{
+              position: 'fixed',
+              left: previewX,
+              top: previewY,
+              width: displaySize.width * zoom,
+              height: displaySize.height * zoom,
+              border: '2px dashed #1976d2',
+              borderRadius: '4px',
+              backgroundColor: 'rgba(25, 118, 210, 0.1)',
+              pointerEvents: 'none',
+              zIndex: 1000,
+              transform: 'translate(-50%, -50%)',
+              transition: 'all 0.1s ease-out',
+            }}
+          >
+            {/* Connection point indicators */}
+            {connectionPoints.map((cp, index) => {
+              const cpScreenX = previewX + (cp.position.x - displaySize.width / 2) * zoom;
+              const cpScreenY = previewY + (cp.position.y - displaySize.height / 2) * zoom;
+              
+              return (
+                <div
+                  key={index}
+                  style={{
+                    position: 'absolute',
+                    left: cpScreenX,
+                    top: cpScreenY,
+                    width: 6 * zoom,
+                    height: 6 * zoom,
+                    backgroundColor: '#43a047',
+                    border: '1px solid #fff',
+                    borderRadius: '50%',
+                    transform: 'translate(-50%, -50%)',
+                    pointerEvents: 'none',
+                  }}
+                />
+              );
+            })}
+          </div>
         );
       })()}
       {/* Editable input overlay */}
@@ -745,6 +1285,46 @@ const CanvasArea: React.FC<CanvasAreaProps> = ({ wireToolActive, selectToolActiv
           onChange={handleInputChange}
           onBlur={handleInputBlur}
           onKeyDown={handleInputKeyDown}
+        />
+      )}
+      {/* Text input overlay */}
+      {textInputMode && textInputPosition && (
+        <input
+          type="text"
+          autoFocus
+          style={{
+            position: 'absolute',
+            left: `${textInputPosition.x}px`,
+            top: `${textInputPosition.y}px`,
+            fontSize: '14px',
+            border: '1px solid #1976d2',
+            borderRadius: '4px',
+            padding: '4px 8px',
+            zIndex: 1000,
+          }}
+          onBlur={(e) => {
+            if (e.target.value.trim()) {
+              addTextElement({
+                text: e.target.value,
+                position: textInputPosition!,
+                fontSize: 14,
+                fontFamily: 'Arial',
+                color: '#333',
+                rotation: 0,
+                alignment: 'left'
+              });
+            }
+            setTextInputMode(false);
+            setTextInputPosition(null);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              (e.target as HTMLInputElement).blur();
+            } else if (e.key === 'Escape') {
+              setTextInputMode(false);
+              setTextInputPosition(null);
+            }
+          }}
         />
       )}
       <Stage
@@ -835,6 +1415,10 @@ const CanvasArea: React.FC<CanvasAreaProps> = ({ wireToolActive, selectToolActiv
               listening={false}
             />
           )}
+          {/* Render new elements */}
+          {textElementsMemo}
+          {dimensionElementsMemo}
+          {measurementPointsMemo}
         </Layer>
       </Stage>
     </div>

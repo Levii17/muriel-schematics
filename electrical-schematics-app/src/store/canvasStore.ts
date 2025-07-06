@@ -9,11 +9,16 @@ import {
   WireType,
   SymbolProperties,
   WireProperties,
-  ConnectionPoint
+  ConnectionPoint,
+  TextElement,
+  DimensionElement,
+  MeasurementResult,
+  ToolType,
+  ValidationResult
 } from '../types';
 import { symbolCatalog } from '../symbols/catalog';
 
-interface CanvasStore extends CanvasState {
+interface CanvasStore extends Omit<CanvasState, 'autoSave'> {
   // Actions
   addSymbol: (symbol: Omit<ElectricalSymbol, 'id'>) => void;
   updateSymbol: (id: string, updates: Partial<ElectricalSymbol>) => void;
@@ -26,14 +31,34 @@ interface CanvasStore extends CanvasState {
   updateWire: (id: string, updates: Partial<Wire>) => void;
   deleteWire: (id: string) => void;
   
+  // Text elements
+  addTextElement: (textElement: Omit<TextElement, 'id'>) => void;
+  updateTextElement: (id: string, updates: Partial<TextElement>) => void;
+  deleteTextElement: (id: string) => void;
+  
+  // Dimension elements
+  addDimensionElement: (dimensionElement: Omit<DimensionElement, 'id'>) => void;
+  updateDimensionElement: (id: string, updates: Partial<DimensionElement>) => void;
+  deleteDimensionElement: (id: string) => void;
+  
   selectElement: (id: string) => void;
   selectMultipleElements: (ids: string[]) => void;
+  selectAll: () => void;
   clearSelection: () => void;
   
   setZoom: (zoom: number) => void;
   setPan: (pan: Point) => void;
   setGridSize: (size: number) => void;
   toggleSnapToGrid: () => void;
+  setActiveTool: (tool: ToolType) => void;
+  setMeasurementUnit: (unit: 'mm' | 'cm' | 'm' | 'in' | 'ft') => void;
+  toggleShowMeasurements: () => void;
+  toggleAutoSave: () => void;
+  
+  // Measurement tools
+  measureDistance: (startPoint: Point, endPoint: Point) => MeasurementResult;
+  measureAngle: (center: Point, point1: Point, point2: Point) => number;
+  measureArea: (points: Point[]) => number;
   
   // Undo/Redo
   undo: () => void;
@@ -43,6 +68,7 @@ interface CanvasStore extends CanvasState {
   clearCanvas: () => void;
   duplicateSelected: () => void;
   alignElements: (alignment: 'left' | 'center' | 'right' | 'top' | 'middle' | 'bottom') => void;
+  distributeElements: (direction: 'horizontal' | 'vertical') => void;
   
   // Connection management
   connectElements: (startId: string, endId: string, startConnectionId: string, endConnectionId: string) => void;
@@ -51,11 +77,24 @@ interface CanvasStore extends CanvasState {
   // Import/Export
   loadProject: (state: CanvasState) => void;
   exportState: () => CanvasState;
-
+  exportToPDF: () => void;
+  exportToSVG: () => void;
+  exportToPNG: () => void;
+  
+  // Auto-save functionality
+  autoSaveAction: () => void;
+  loadAutoSaveAction: () => void;
+  
+  // Validation
+  validateSchematic: () => ValidationResult[];
+  
   past: CanvasState[];
   future: CanvasState[];
   _getSnapshot: () => CanvasState;
   _pushToHistory: () => void;
+  
+  // State properties
+  autoSave: boolean;
 }
 
 const generateId = () => Math.random().toString(36).substr(2, 9);
@@ -106,18 +145,25 @@ export const useCanvasStore = create<CanvasStore>()(
       // Initial state
       symbols: [],
       wires: [],
+      textElements: [],
+      dimensionElements: [],
       selectedElements: [],
       zoom: 1,
       pan: { x: 0, y: 0 },
       gridSize: 20,
       snapToGrid: true,
+      activeTool: ToolType.SELECT,
+      measurementUnit: 'mm',
+      showMeasurements: false,
+      autoSave: true,
+      lastSaved: null,
       past: [],
       future: [],
 
       _getSnapshot() {
         const state = get();
-        const { symbols, wires, selectedElements, zoom, pan, gridSize, snapToGrid } = state;
-        return { symbols, wires, selectedElements, zoom, pan, gridSize, snapToGrid };
+        const { symbols, wires, textElements, dimensionElements, selectedElements, zoom, pan, gridSize, snapToGrid, activeTool, measurementUnit, showMeasurements } = state;
+        return { symbols, wires, textElements, dimensionElements, selectedElements, zoom, pan, gridSize, snapToGrid, activeTool, measurementUnit, showMeasurements };
       },
       _pushToHistory() {
         const snapshot = get()._getSnapshot();
@@ -195,144 +241,555 @@ export const useCanvasStore = create<CanvasStore>()(
       scaleSymbol: (id, scale) => { get()._pushToHistory(); set((state) => ({ symbols: state.symbols.map(symbol => symbol.id === id ? { ...symbol, scale } : symbol) })); },
 
       // Wire actions
-      // Wire actions
-addWire: (wireData) => {
-  get()._pushToHistory();
-  const state = get();
-  // Validate endpoints
-  const validStartSymbol = wireData.startConnectionId
-    ? state.symbols.some(s => s.connections.some(c => c.id === wireData.startConnectionId))
-    : true;
-  const validEndSymbol = wireData.endConnectionId
-    ? state.symbols.some(s => s.connections.some(c => c.id === wireData.endConnectionId))
-    : true;
-  if (!validStartSymbol || !validEndSymbol) {
-    console.warn('Wire endpoints are invalid. Wire not added.', wireData);
-    return;
-  }
-  // Ensure wire properties are present
-  const defaultWireProps = { color: '#000000', thickness: 1, material: 'copper', insulation: 'PVC' };
-  const mergedProperties = { ...defaultWireProps, ...wireData.properties };
-  set((state) => ({
-    wires: [...state.wires, { ...wireData, id: generateId(), properties: mergedProperties }]
-  }));
-},
-updateWire: (id, updates) => {
-  get()._pushToHistory();
-  set((state) => ({
-    wires: state.wires.map(wire => {
-      if (wire.id !== id) return wire;
-      // Validate endpoints if being updated
-      let valid = true;
-      if (updates.startConnectionId) {
-        valid = state.symbols.some(s => s.connections.some(c => c.id === updates.startConnectionId));
-      }
-      if (updates.endConnectionId) {
-        valid = valid && state.symbols.some(s => s.connections.some(c => c.id === updates.endConnectionId));
-      }
-      if (!valid) {
-        console.warn('Wire endpoints are invalid. Wire not updated.', updates);
-        return wire;
-      }
-      // Ensure wire properties are present
-      const defaultWireProps = { color: '#000000', thickness: 1, material: 'copper', insulation: 'PVC' };
-      const mergedProperties = { ...defaultWireProps, ...wire.properties, ...updates.properties };
-      return { ...wire, ...updates, properties: mergedProperties };
-    })
-  }));
-},
+      addWire: (wireData) => {
+        get()._pushToHistory();
+        const state = get();
+        // Validate endpoints
+        const validStartSymbol = wireData.startConnectionId
+          ? state.symbols.some(s => s.connections.some(c => c.id === wireData.startConnectionId))
+          : true;
+        const validEndSymbol = wireData.endConnectionId
+          ? state.symbols.some(s => s.connections.some(c => c.id === wireData.endConnectionId))
+          : true;
+        if (!validStartSymbol || !validEndSymbol) {
+          console.warn('Wire endpoints are invalid. Wire not added.', wireData);
+          return;
+        }
+        // Ensure wire properties are present
+        const defaultWireProps = { color: '#000000', thickness: 1, material: 'copper', insulation: 'PVC' };
+        const mergedProperties = { ...defaultWireProps, ...wireData.properties };
+        set((state) => ({
+          wires: [...state.wires, { ...wireData, id: generateId(), properties: mergedProperties }]
+        }));
+      },
+      updateWire: (id, updates) => {
+        get()._pushToHistory();
+        set((state) => ({
+          wires: state.wires.map(wire => {
+            if (wire.id !== id) return wire;
+            // Validate endpoints if being updated
+            let valid = true;
+            if (updates.startConnectionId) {
+              valid = state.symbols.some(s => s.connections.some(c => c.id === updates.startConnectionId));
+            }
+            if (updates.endConnectionId) {
+              valid = valid && state.symbols.some(s => s.connections.some(c => c.id === updates.endConnectionId));
+            }
+            if (!valid) {
+              console.warn('Wire endpoints are invalid. Wire not updated.', updates);
+              return wire;
+            }
+            // Ensure wire properties are present
+            const defaultWireProps = { color: '#000000', thickness: 1, material: 'copper', insulation: 'PVC' };
+            const mergedProperties = { ...defaultWireProps, ...wire.properties, ...updates.properties };
+            return { ...wire, ...updates, properties: mergedProperties };
+          })
+        }));
+      },
       deleteWire: (id) => { get()._pushToHistory(); set((state) => ({ wires: state.wires.filter(wire => wire.id !== id), selectedElements: state.selectedElements.filter(elementId => elementId !== id) })); },
 
-      // Selection actions (do not push to history)
-      selectElement: (id) => set((state) => ({ selectedElements: state.selectedElements.includes(id) ? state.selectedElements : [...state.selectedElements, id] })),
-      selectMultipleElements: (ids) => set({ selectedElements: ids }),
-      clearSelection: () => set({ selectedElements: [] }),
+      // Text element actions
+      addTextElement: (textElement) => {
+        get()._pushToHistory();
+        set((state) => ({
+          textElements: [...state.textElements, { ...textElement, id: generateId() }]
+        }));
+      },
 
-      // Canvas view actions
-      setZoom: (zoom) => { get()._pushToHistory(); set({ zoom }); },
-      setPan: (pan) => { get()._pushToHistory(); set({ pan }); },
-      setGridSize: (gridSize) => { get()._pushToHistory(); set({ gridSize }); },
-      toggleSnapToGrid: () => { get()._pushToHistory(); set((state) => ({ snapToGrid: !state.snapToGrid })); },
+      updateTextElement: (id, updates) => {
+        get()._pushToHistory();
+        set((state) => ({
+          textElements: state.textElements.map(el => 
+            el.id === id ? { ...el, ...updates } : el
+          )
+        }));
+      },
+
+      deleteTextElement: (id) => {
+        get()._pushToHistory();
+        set((state) => ({
+          textElements: state.textElements.filter(el => el.id !== id),
+          selectedElements: state.selectedElements.filter(selectedId => selectedId !== id)
+        }));
+      },
+
+      // Dimension element actions
+      addDimensionElement: (dimensionElement) => {
+        get()._pushToHistory();
+        set((state) => ({
+          dimensionElements: [...state.dimensionElements, { ...dimensionElement, id: generateId() }]
+        }));
+      },
+
+      updateDimensionElement: (id, updates) => {
+        get()._pushToHistory();
+        set((state) => ({
+          dimensionElements: state.dimensionElements.map(el => 
+            el.id === id ? { ...el, ...updates } : el
+          )
+        }));
+      },
+
+      deleteDimensionElement: (id) => {
+        get()._pushToHistory();
+        set((state) => ({
+          dimensionElements: state.dimensionElements.filter(el => el.id !== id),
+          selectedElements: state.selectedElements.filter(selectedId => selectedId !== id)
+        }));
+      },
+
+      // Selection actions
+      selectElement: (id: string) => {
+        set((state) => ({
+          selectedElements: [id]
+        }));
+      },
+
+      selectMultipleElements: (ids: string[]) => {
+        set((state) => ({
+          selectedElements: ids
+        }));
+      },
+
+      selectAll: () => {
+        set((state) => ({
+          selectedElements: [
+            ...state.symbols.map(s => s.id),
+            ...state.wires.map(w => w.id),
+            ...state.textElements.map(t => t.id),
+            ...state.dimensionElements.map(d => d.id)
+          ]
+        }));
+      },
+
+      clearSelection: () => {
+        set((state) => ({
+          selectedElements: []
+        }));
+      },
+
+      // Zoom and pan actions
+      setZoom: (zoom: number) => {
+        set({ zoom });
+      },
+
+      setPan: (pan: Point) => {
+        set({ pan });
+      },
+
+      setGridSize: (size: number) => {
+        set({ gridSize: size });
+      },
+
+      toggleSnapToGrid: () => {
+        set((state) => ({ snapToGrid: !state.snapToGrid }));
+      },
+
+      setActiveTool: (tool: ToolType) => {
+        set({ activeTool: tool });
+      },
+
+      setMeasurementUnit: (unit: 'mm' | 'cm' | 'm' | 'in' | 'ft') => {
+        set({ measurementUnit: unit });
+      },
+
+      toggleShowMeasurements: () => {
+        set((state) => ({ showMeasurements: !state.showMeasurements }));
+      },
+
+      toggleAutoSave: () => {
+        set((state) => ({ autoSave: !state.autoSave }));
+      },
+
+      // Measurement tools
+      measureDistance: (startPoint: Point, endPoint: Point): MeasurementResult => {
+        const distance = Math.hypot(endPoint.x - startPoint.x, endPoint.y - startPoint.y);
+        return {
+          distance,
+          unit: 'mm'
+        };
+      },
+
+      measureAngle: (center: Point, point1: Point, point2: Point): number => {
+        const angle1 = Math.atan2(point1.y - center.y, point1.x - center.x);
+        const angle2 = Math.atan2(point2.y - center.y, point2.x - center.x);
+        let angle = (angle2 - angle1) * 180 / Math.PI;
+        if (angle < 0) angle += 360;
+        return angle;
+      },
+
+      measureArea: (points: Point[]): number => {
+        if (points.length < 3) return 0;
+        let area = 0;
+        for (let i = 0; i < points.length; i++) {
+          const j = (i + 1) % points.length;
+          area += points[i].x * points[j].y;
+          area -= points[j].x * points[i].y;
+        }
+        return Math.abs(area) / 2;
+      },
 
       // Undo/Redo
       undo: () => {
         const state = get();
-        if (!state.past || state.past.length === 0) return;
-        const prev = state.past[state.past.length - 1];
-        const newPast = state.past.slice(0, -1);
-        const snapshot = state._getSnapshot();
-        set({ ...prev, past: newPast, future: [...(state.future || []), snapshot] });
+        if (state.past.length > 0) {
+          const previous = state.past[state.past.length - 1];
+          const newPast = state.past.slice(0, -1);
+          set({
+            ...previous,
+            past: newPast,
+            future: [state._getSnapshot(), ...state.future]
+          });
+        }
       },
+
       redo: () => {
         const state = get();
-        if (!state.future || state.future.length === 0) return;
-        const next = state.future[state.future.length - 1];
-        const newFuture = state.future.slice(0, -1);
-        const snapshot = state._getSnapshot();
-        set({ ...next, past: [...(state.past || []), snapshot], future: newFuture });
+        if (state.future.length > 0) {
+          const next = state.future[0];
+          const newFuture = state.future.slice(1);
+          set({
+            ...next,
+            past: [...state.past, state._getSnapshot()],
+            future: newFuture
+          });
+        }
+      },
+
+      // Auto-save functionality
+      autoSaveAction: () => {
+        const state = get();
+        if (state.autoSave) {
+          const snapshot = state._getSnapshot();
+          localStorage.setItem('electrical-schematic-autosave', JSON.stringify({
+            ...snapshot,
+            timestamp: new Date().toISOString()
+          }));
+          set({ lastSaved: new Date() });
+        }
+      },
+
+      loadAutoSaveAction: () => {
+        const saved = localStorage.getItem('electrical-schematic-autosave');
+        if (saved) {
+          try {
+            const parsed = JSON.parse(saved);
+            delete parsed.timestamp;
+            set(parsed);
+            return true;
+          } catch (error) {
+            console.error('Failed to load auto-save:', error);
+            return false;
+          }
+        }
+        return false;
+      },
+
+      // Export functions
+      exportToPDF: () => {
+        // Implementation for PDF export
+        console.log('Exporting to PDF...');
+      },
+
+      exportToSVG: () => {
+        // Implementation for SVG export
+        console.log('Exporting to SVG...');
+      },
+
+      exportToPNG: () => {
+        // Implementation for PNG export
+        console.log('Exporting to PNG...');
+      },
+
+      // Validation
+      validateSchematic: () => {
+        const state = get();
+        const results: ValidationResult[] = [];
+        
+        // Check for disconnected symbols
+        const connectedSymbolIds = new Set();
+        state.wires.forEach(wire => {
+          if (wire.startConnectionId) connectedSymbolIds.add(wire.startConnectionId);
+          if (wire.endConnectionId) connectedSymbolIds.add(wire.endConnectionId);
+        });
+        
+        state.symbols.forEach(symbol => {
+          symbol.connections.forEach(conn => {
+            if (conn.connected && !connectedSymbolIds.has(conn.connectionId!)) {
+              results.push({
+                ruleId: 'disconnected-connection',
+                message: `Symbol ${symbol.id} has disconnected connection ${conn.id}`,
+                severity: 'warning' as const,
+                elementIds: [symbol.id]
+              });
+            }
+          });
+        });
+        
+        return results;
       },
 
       // Canvas operations
-      clearCanvas: () => { get()._pushToHistory(); set({ symbols: [], wires: [], selectedElements: [] }); },
-      duplicateSelected: () => { get()._pushToHistory(); set((state) => {
-        const newSymbols = state.selectedElements.filter(id => state.symbols.find(s => s.id === id)).map(id => {
-          const original = state.symbols.find(s => s.id === id)!;
-          return { ...original, id: generateId(), position: { x: original.position.x + 50, y: original.position.y + 50 } };
+      clearCanvas: () => {
+        set((state) => ({
+          symbols: [],
+          wires: [],
+          textElements: [],
+          dimensionElements: [],
+          selectedElements: []
+        }));
+        get()._pushToHistory();
+      },
+
+      duplicateSelected: () => {
+        const state = get();
+        const newSymbols: ElectricalSymbol[] = [];
+        const newWires: Wire[] = [];
+        const newTextElements: TextElement[] = [];
+        const newDimensionElements: DimensionElement[] = [];
+        const newSelectedElements: string[] = [];
+
+        // Duplicate selected symbols
+        state.selectedElements.forEach(id => {
+          const symbol = state.symbols.find(s => s.id === id);
+          if (symbol) {
+            const newSymbol = {
+              ...symbol,
+              id: generateId(),
+              position: { x: symbol.position.x + 50, y: symbol.position.y + 50 }
+            };
+            newSymbols.push(newSymbol);
+            newSelectedElements.push(newSymbol.id);
+          }
+
+          const wire = state.wires.find(w => w.id === id);
+          if (wire) {
+            const newWire = {
+              ...wire,
+              id: generateId(),
+              startPoint: { x: wire.startPoint.x + 50, y: wire.startPoint.y + 50 },
+              endPoint: { x: wire.endPoint.x + 50, y: wire.endPoint.y + 50 }
+            };
+            newWires.push(newWire);
+            newSelectedElements.push(newWire.id);
+          }
+
+          const textElement = state.textElements.find(t => t.id === id);
+          if (textElement) {
+            const newTextElement = {
+              ...textElement,
+              id: generateId(),
+              position: { x: textElement.position.x + 50, y: textElement.position.y + 50 }
+            };
+            newTextElements.push(newTextElement);
+            newSelectedElements.push(newTextElement.id);
+          }
+
+          const dimensionElement = state.dimensionElements.find(d => d.id === id);
+          if (dimensionElement) {
+            const newDimensionElement = {
+              ...dimensionElement,
+              id: generateId(),
+              startPoint: { x: dimensionElement.startPoint.x + 50, y: dimensionElement.startPoint.y + 50 },
+              endPoint: { x: dimensionElement.endPoint.x + 50, y: dimensionElement.endPoint.y + 50 }
+            };
+            newDimensionElements.push(newDimensionElement);
+            newSelectedElements.push(newDimensionElement.id);
+          }
         });
-        return { symbols: [...state.symbols, ...newSymbols], selectedElements: newSymbols.map(s => s.id) };
-      }); },
-      alignElements: (alignment) => { get()._pushToHistory(); set((state) => {
-        if (state.selectedElements.length < 2) return state;
+
+        set((state) => ({
+          symbols: [...state.symbols, ...newSymbols],
+          wires: [...state.wires, ...newWires],
+          textElements: [...state.textElements, ...newTextElements],
+          dimensionElements: [...state.dimensionElements, ...newDimensionElements],
+          selectedElements: newSelectedElements
+        }));
+
+        get()._pushToHistory();
+      },
+
+      alignElements: (alignment: 'left' | 'center' | 'right' | 'top' | 'middle' | 'bottom') => {
+        const state = get();
+        if (state.selectedElements.length < 2) return;
+
         const selectedSymbols = state.symbols.filter(s => state.selectedElements.includes(s.id));
-        if (selectedSymbols.length < 2) return state;
-        let alignedSymbols = [...state.symbols];
+        if (selectedSymbols.length < 2) return;
+
+        let referenceValue: number;
+        const updatedSymbols = [...state.symbols];
+
         switch (alignment) {
           case 'left':
-            const leftmostX = Math.min(...selectedSymbols.map(s => s.position.x));
-            alignedSymbols = alignedSymbols.map(symbol => state.selectedElements.includes(symbol.id) ? { ...symbol, position: { ...symbol.position, x: leftmostX } } : symbol);
+            referenceValue = Math.min(...selectedSymbols.map(s => s.position.x));
+            selectedSymbols.forEach(symbol => {
+              const index = updatedSymbols.findIndex(s => s.id === symbol.id);
+              if (index !== -1) {
+                updatedSymbols[index] = { ...symbol, position: { ...symbol.position, x: referenceValue } };
+              }
+            });
             break;
           case 'center':
-            const centerX = selectedSymbols.reduce((sum, s) => sum + s.position.x, 0) / selectedSymbols.length;
-            alignedSymbols = alignedSymbols.map(symbol => state.selectedElements.includes(symbol.id) ? { ...symbol, position: { ...symbol.position, x: centerX } } : symbol);
+            referenceValue = selectedSymbols.reduce((sum, s) => sum + s.position.x, 0) / selectedSymbols.length;
+            selectedSymbols.forEach(symbol => {
+              const index = updatedSymbols.findIndex(s => s.id === symbol.id);
+              if (index !== -1) {
+                updatedSymbols[index] = { ...symbol, position: { ...symbol.position, x: referenceValue } };
+              }
+            });
             break;
           case 'right':
-            const rightmostX = Math.max(...selectedSymbols.map(s => s.position.x));
-            alignedSymbols = alignedSymbols.map(symbol => state.selectedElements.includes(symbol.id) ? { ...symbol, position: { ...symbol.position, x: rightmostX } } : symbol);
+            referenceValue = Math.max(...selectedSymbols.map(s => s.position.x));
+            selectedSymbols.forEach(symbol => {
+              const index = updatedSymbols.findIndex(s => s.id === symbol.id);
+              if (index !== -1) {
+                updatedSymbols[index] = { ...symbol, position: { ...symbol.position, x: referenceValue } };
+              }
+            });
             break;
           case 'top':
-            const topmostY = Math.min(...selectedSymbols.map(s => s.position.y));
-            alignedSymbols = alignedSymbols.map(symbol => state.selectedElements.includes(symbol.id) ? { ...symbol, position: { ...symbol.position, y: topmostY } } : symbol);
+            referenceValue = Math.min(...selectedSymbols.map(s => s.position.y));
+            selectedSymbols.forEach(symbol => {
+              const index = updatedSymbols.findIndex(s => s.id === symbol.id);
+              if (index !== -1) {
+                updatedSymbols[index] = { ...symbol, position: { ...symbol.position, y: referenceValue } };
+              }
+            });
             break;
           case 'middle':
-            const centerY = selectedSymbols.reduce((sum, s) => sum + s.position.y, 0) / selectedSymbols.length;
-            alignedSymbols = alignedSymbols.map(symbol => state.selectedElements.includes(symbol.id) ? { ...symbol, position: { ...symbol.position, y: centerY } } : symbol);
+            referenceValue = selectedSymbols.reduce((sum, s) => sum + s.position.y, 0) / selectedSymbols.length;
+            selectedSymbols.forEach(symbol => {
+              const index = updatedSymbols.findIndex(s => s.id === symbol.id);
+              if (index !== -1) {
+                updatedSymbols[index] = { ...symbol, position: { ...symbol.position, y: referenceValue } };
+              }
+            });
             break;
           case 'bottom':
-            const bottommostY = Math.max(...selectedSymbols.map(s => s.position.y));
-            alignedSymbols = alignedSymbols.map(symbol => state.selectedElements.includes(symbol.id) ? { ...symbol, position: { ...symbol.position, y: bottommostY } } : symbol);
+            referenceValue = Math.max(...selectedSymbols.map(s => s.position.y));
+            selectedSymbols.forEach(symbol => {
+              const index = updatedSymbols.findIndex(s => s.id === symbol.id);
+              if (index !== -1) {
+                updatedSymbols[index] = { ...symbol, position: { ...symbol.position, y: referenceValue } };
+              }
+            });
             break;
         }
-        return { symbols: alignedSymbols };
-      }); },
+
+        set({ symbols: updatedSymbols });
+        get()._pushToHistory();
+      },
+
+      distributeElements: (direction: 'horizontal' | 'vertical') => {
+        const state = get();
+        if (state.selectedElements.length < 3) return;
+
+        const selectedSymbols = state.symbols.filter(s => state.selectedElements.includes(s.id));
+        if (selectedSymbols.length < 3) return;
+
+        const sortedSymbols = direction === 'horizontal' 
+          ? selectedSymbols.sort((a, b) => a.position.x - b.position.x)
+          : selectedSymbols.sort((a, b) => a.position.y - b.position.y);
+
+        const first = sortedSymbols[0];
+        const last = sortedSymbols[sortedSymbols.length - 1];
+        const totalDistance = direction === 'horizontal' 
+          ? last.position.x - first.position.x
+          : last.position.y - first.position.y;
+        const spacing = totalDistance / (sortedSymbols.length - 1);
+
+        const updatedSymbols = [...state.symbols];
+        sortedSymbols.forEach((symbol, symbolIndex) => {
+          if (symbolIndex === 0 || symbolIndex === sortedSymbols.length - 1) return;
+          
+          const index = updatedSymbols.findIndex(s => s.id === symbol.id);
+          if (index !== -1) {
+            const newPosition = direction === 'horizontal'
+              ? { ...symbol.position, x: first.position.x + spacing * symbolIndex }
+              : { ...symbol.position, y: first.position.y + spacing * symbolIndex };
+            updatedSymbols[index] = { ...symbol, position: newPosition };
+          }
+        });
+
+        set({ symbols: updatedSymbols });
+        get()._pushToHistory();
+      },
+
       // Connection management
-      connectElements: (startId, endId, startConnectionId, endConnectionId) => { get()._pushToHistory(); set((state) => {
+      connectElements: (startId: string, endId: string, startConnectionId: string, endConnectionId: string) => {
+        const state = get();
         const startSymbol = state.symbols.find(s => s.id === startId);
         const endSymbol = state.symbols.find(s => s.id === endId);
-        if (!startSymbol || !endSymbol) return state;
-        const newWire: Wire = { id: generateId(), startPoint: startSymbol.position, endPoint: endSymbol.position, startConnectionId, endConnectionId, wireType: WireType.CONTROL, properties: { color: '#000000', thickness: 1, material: 'copper', insulation: 'PVC' } };
-        return { wires: [...state.wires, newWire], symbols: state.symbols.map(symbol => { if (symbol.id === startId || symbol.id === endId) { return { ...symbol, connections: symbol.connections.map(conn => { if (conn.id === startConnectionId || conn.id === endConnectionId) { return { ...conn, connected: true }; } return conn; }) }; } return symbol; }) };
-      }); },
-      disconnectElements: (wireId) => { get()._pushToHistory(); set((state) => {
+        
+        if (!startSymbol || !endSymbol) return;
+
+        // Update connection points
+        const updatedSymbols = state.symbols.map(symbol => {
+          if (symbol.id === startId) {
+            return {
+              ...symbol,
+              connections: symbol.connections.map(conn => 
+                conn.id === startConnectionId 
+                  ? { ...conn, connected: true, connectionId: `${startId}-${endId}` }
+                  : conn
+              )
+            };
+          }
+          if (symbol.id === endId) {
+            return {
+              ...symbol,
+              connections: symbol.connections.map(conn => 
+                conn.id === endConnectionId 
+                  ? { ...conn, connected: true, connectionId: `${startId}-${endId}` }
+                  : conn
+              )
+            };
+          }
+          return symbol;
+        });
+
+        set({ symbols: updatedSymbols });
+        get()._pushToHistory();
+      },
+
+      disconnectElements: (wireId: string) => {
+        const state = get();
         const wire = state.wires.find(w => w.id === wireId);
-        if (!wire) return state;
-        return { wires: state.wires.filter(w => w.id !== wireId), symbols: state.symbols.map(symbol => ({ ...symbol, connections: symbol.connections.map(conn => { if (conn.id === wire.startConnectionId || conn.id === wire.endConnectionId) { return { ...conn, connected: false, connectionId: undefined }; } return conn; }) })) };
-      }); },
+        
+        if (!wire) return;
+
+        // Disconnect connection points
+        const updatedSymbols = state.symbols.map(symbol => ({
+          ...symbol,
+          connections: symbol.connections.map(conn => 
+            conn.connectionId === wireId 
+              ? { ...conn, connected: false, connectionId: undefined }
+              : conn
+          )
+        }));
+
+        set({ symbols: updatedSymbols });
+        get()._pushToHistory();
+      },
+
       // Import/Export
-      loadProject: (state) => { get()._pushToHistory(); set(state); },
+      loadProject: (state: CanvasState) => {
+        set(state);
+        get()._pushToHistory();
+      },
+
       exportState: () => {
         const state = get();
-        return { symbols: state.symbols, wires: state.wires, selectedElements: state.selectedElements, zoom: state.zoom, pan: state.pan, gridSize: state.gridSize, snapToGrid: state.snapToGrid };
-      }
+        return { 
+          symbols: state.symbols, 
+          wires: state.wires, 
+          selectedElements: state.selectedElements, 
+          zoom: state.zoom, 
+          pan: state.pan, 
+          gridSize: state.gridSize, 
+          snapToGrid: state.snapToGrid 
+        };
+      },
     }),
     {
       name: 'canvas-store'

@@ -133,13 +133,7 @@ const SymbolLibrary: React.FC<SymbolLibraryProps> = ({
                   },
                 }}
               >
-                {entry.renderer ? (
-                  <span style={{ width: 48, height: 48, display: 'inline-block' }}>
-                    <entry.renderer {...entry.defaultProperties} />
-                  </span>
-                ) : (
-                  <SymbolSVG paths={entry.paths} viewBox={entry.viewBox || '0 0 24 24'} />
-                )}
+                <SymbolSVG paths={entry.paths} viewBox={entry.viewBox || '0 0 24 24'} />
                 <Box sx={{ mt: 1, fontSize: 14, textAlign: 'center', color: 'text.primary', fontWeight: 500, wordBreak: 'break-word' }}>
                   {entry.name}
                 </Box>

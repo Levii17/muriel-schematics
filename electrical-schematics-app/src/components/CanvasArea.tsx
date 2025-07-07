@@ -6,6 +6,7 @@ import { useCanvasStore } from '../store/canvasStore';
 import { SymbolType, WireType, Point } from '../types';
 import { symbolCatalog } from '../symbols/catalog';
 import SymbolElement from './SymbolElement';
+import type { SymbolCatalogEntry } from '../symbols/catalog';
 
 // A3 size at 72dpi: 420mm x 297mm ~ 1050 x 742 px
 const PAPER_WIDTH = 1200;
@@ -163,90 +164,22 @@ const CanvasArea: React.FC<CanvasAreaProps> = ({
     };
   }, [pan, zoom, containerSize]);
 
-  // Custom drop handling for symbol placement
-  const handlePointerUp = useCallback((e: PointerEvent) => {
-    if (!draggedSymbolType || !dragPreviewPosition) return;
-    
-    // Get the stage and its container for proper coordinate transformation
-    const stage = stageRef.current;
-    if (!stage) return;
-    
-    const stageContainer = stage.container();
-    const boundingRect = stageContainer.getBoundingClientRect();
-    
-    // Transform screen coordinates to canvas coordinates
-    const screenX = dragPreviewPosition.x - boundingRect.left;
-    const screenY = dragPreviewPosition.y - boundingRect.top;
-    
-    // Convert to canvas coordinates (accounting for pan and zoom)
-    const canvasX = (screenX - (containerSize.width - PAPER_WIDTH) / 2 - pan.x) / zoom;
-    const canvasY = (screenY - (containerSize.height - PAPER_HEIGHT) / 2 - pan.y) / zoom;
-    
-    // Get symbol catalog entry for bounds checking
-    const entry = symbolCatalog.find(s => s.type === draggedSymbolType);
-    if (!entry) return;
-    
-    const displaySize = entry.displaySize || { width: 20, height: 20 };
-    
-    // Calculate symbol position (center the symbol on the cursor)
-    let x = canvasX - displaySize.width / 2;
-    let y = canvasY - displaySize.height / 2;
-    
-    // Snap to grid if enabled
-    if (snapToGrid) {
-      const grid = 20; // Grid spacing
-      
-      // Try to snap to connection points first
-      const connectionPoints = entry.defaultConnectionPoints || [];
-      let snapped = false;
-      
-      for (const cp of connectionPoints) {
-        const cpX = x + cp.position.x;
-        const cpY = y + cp.position.y;
-        
-        // Find nearest grid point
-        const targetCPX = Math.round(cpX / grid) * grid;
-        const targetCPY = Math.round(cpY / grid) * grid;
-        
-        // If close enough to grid point, snap
-        if (Math.abs(cpX - targetCPX) < grid / 2 && Math.abs(cpY - targetCPY) < grid / 2) {
-          x = targetCPX - cp.position.x;
-          y = targetCPY - cp.position.y;
-          snapped = true;
-          break;
-        }
-      }
-      
-      if (!snapped) {
-        // Fallback: snap symbol center to grid
-        x = Math.round(x / grid) * grid;
-        y = Math.round(y / grid) * grid;
-      }
-    }
-    
-    // Check bounds and prevent overlapping with existing symbols
-    const symbolBounds = {
-      x: x,
-      y: y,
-      width: displaySize.width,
-      height: displaySize.height
+  // Utility: Clamp symbol position to drawable area
+  function clampSymbolPosition(x: number, y: number, displaySize: { width: number; height: number }): { x: number; y: number } {
+    const minX = BORDER_THICKNESS;
+    const minY = BORDER_THICKNESS;
+    const maxX = PAPER_WIDTH - BORDER_THICKNESS - displaySize.width;
+    const maxY = PAPER_HEIGHT - BORDER_THICKNESS - TITLE_BLOCK_HEIGHT - displaySize.height;
+    return {
+      x: Math.max(minX, Math.min(maxX, x)),
+      y: Math.max(minY, Math.min(maxY, y)),
     };
-    
-    // Check if within drawing area bounds (accounting for border thickness)
-    const withinBounds = (
-      x >= BORDER_THICKNESS &&
-      y >= BORDER_THICKNESS &&
-      x + displaySize.width <= PAPER_WIDTH - BORDER_THICKNESS &&
-      y + displaySize.height <= PAPER_HEIGHT - BORDER_THICKNESS - TITLE_BLOCK_HEIGHT
-    );
-    
-    if (!withinBounds) {
-      console.warn('Symbol would be placed outside drawing area');
-      return;
-    }
-    
-    // Check for overlapping with existing symbols
-    const overlapping = symbols.some(symbol => {
+  }
+
+  // Utility: Check for overlap with existing symbols
+  function isOverlapping(x: number, y: number, displaySize: { width: number; height: number }): boolean {
+    const symbolBounds = { x, y, width: displaySize.width, height: displaySize.height };
+    return symbols.some(symbol => {
       const existingCatalogEntry = symbolCatalog.find(s => s.type === symbol.type);
       const existingDisplaySize = existingCatalogEntry?.displaySize || { width: 20, height: 20 };
       const existingBounds = {
@@ -255,7 +188,6 @@ const CanvasArea: React.FC<CanvasAreaProps> = ({
         width: existingDisplaySize.width,
         height: existingDisplaySize.height
       };
-      
       return (
         symbolBounds.x < existingBounds.x + existingBounds.width &&
         symbolBounds.x + symbolBounds.width > existingBounds.x &&
@@ -263,26 +195,103 @@ const CanvasArea: React.FC<CanvasAreaProps> = ({
         symbolBounds.y + symbolBounds.height > existingBounds.y
       );
     });
-    
-    if (overlapping) {
-      console.warn('Symbol would overlap with existing symbol');
+  }
+
+  // Utility: Snap symbol so nearest connection point (or center) lands on grid
+  function snapSymbolToGrid(x: number, y: number, entry: SymbolCatalogEntry): { x: number; y: number } {
+    const grid = 20;
+    const displaySize = entry.displaySize || { width: 20, height: 20 };
+    const connectionPoints = entry.defaultConnectionPoints || [];
+    let bestSnap = { x, y };
+    let minDist = Infinity;
+    if (connectionPoints.length > 0) {
+      for (const cp of connectionPoints) {
+        const cpAbsX = x + cp.position.x;
+        const cpAbsY = y + cp.position.y;
+        const gridX = Math.round(cpAbsX / grid) * grid;
+        const gridY = Math.round(cpAbsY / grid) * grid;
+        const dist = Math.abs(cpAbsX - gridX) + Math.abs(cpAbsY - gridY);
+        if (dist < minDist) {
+          minDist = dist;
+          bestSnap = { x: gridX - cp.position.x, y: gridY - cp.position.y };
+        }
+      }
+    } else {
+      // Snap center to grid
+      const centerX = x + displaySize.width / 2;
+      const centerY = y + displaySize.height / 2;
+      const gridX = Math.round(centerX / grid) * grid;
+      const gridY = Math.round(centerY / grid) * grid;
+      bestSnap = { x: gridX - displaySize.width / 2, y: gridY - displaySize.height / 2 };
+    }
+    return bestSnap;
+  }
+
+  // Utility: Try to nudge to a nearby grid point if overlapping
+  function findNonOverlappingPosition(x: number, y: number, displaySize: { width: number; height: number }, entry: SymbolCatalogEntry): { x: number; y: number } | null {
+    if (!isOverlapping(x, y, displaySize)) return { x, y };
+    // Try 8 neighbors (N, NE, E, SE, S, SW, W, NW)
+    const grid = 20;
+    const directions = [
+      [0, -grid], [grid, -grid], [grid, 0], [grid, grid],
+      [0, grid], [-grid, grid], [-grid, 0], [-grid, -grid]
+    ];
+    for (const [dx, dy] of directions) {
+      const nx = x + dx;
+      const ny = y + dy;
+      const clamped = clampSymbolPosition(nx, ny, displaySize);
+      if (!isOverlapping(clamped.x, clamped.y, displaySize)) {
+        return clamped;
+      }
+    }
+    // Still overlapping
+    return null;
+  }
+
+  // --- Improved drop logic ---
+  const handleContainerPointerUp = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    if (!draggedSymbolType || !dragPreviewPosition) return;
+    const container = containerRef.current;
+    if (!container) return;
+    const rect = container.getBoundingClientRect();
+    const x = e.clientX;
+    const y = e.clientY;
+    if (x < rect.left || x > rect.right || y < rect.top || y > rect.bottom) return;
+    const screenX = x - rect.left;
+    const screenY = y - rect.top;
+    const gridOffsetX = (containerSize.width - PAPER_WIDTH) / 2;
+    const gridOffsetY = (containerSize.height - PAPER_HEIGHT) / 2;
+    const entry = symbolCatalog.find(s => s.type === draggedSymbolType);
+    if (!entry) return;
+    const displaySize = entry.displaySize || { width: 20, height: 20 };
+    // Initial position (centered on cursor)
+    let symbolX = (screenX - gridOffsetX - pan.x) / zoom - displaySize.width / 2;
+    let symbolY = (screenY - gridOffsetY - pan.y) / zoom - displaySize.height / 2;
+    // Snap
+    const snapped = snapSymbolToGrid(symbolX, symbolY, entry);
+    // Clamp
+    const clamped = clampSymbolPosition(snapped.x, snapped.y, displaySize);
+    // Overlap check and nudge
+    const finalPos = findNonOverlappingPosition(clamped.x, clamped.y, displaySize, entry);
+    if (!finalPos) {
+      // Placement invalid, show feedback (handled in preview)
+      setIsDragOver(false);
+      if (setDraggedSymbolType) setDraggedSymbolType(null);
+      if (setDragPreviewPosition) setDragPreviewPosition(null);
       return;
     }
-    
     // Add the symbol
     addSymbol({
       type: draggedSymbolType,
-      position: { x, y },
+      position: finalPos,
       rotation: 0,
       scale: 1,
       properties: {},
       connections: []
     });
-    
     if (setDraggedSymbolType) setDraggedSymbolType(null);
-    if (setDragPreviewPosition) {
-      setDragPreviewPosition(null);
-    }
+    if (setDragPreviewPosition) setDragPreviewPosition(null);
+    setIsDragOver(false);
   }, [draggedSymbolType, dragPreviewPosition, containerSize, pan, zoom, snapToGrid, symbols, addSymbol, setDraggedSymbolType, setDragPreviewPosition]);
 
   // Handle drag over for visual feedback
@@ -296,26 +305,6 @@ const CanvasArea: React.FC<CanvasAreaProps> = ({
   const handlePointerLeave = useCallback(() => {
     setIsDragOver(false);
   }, []);
-
-  // Native event handler for global pointer move
-  const handleGlobalPointerMove = useCallback((e: PointerEvent) => {
-    if (draggedSymbolType) {
-      setIsDragOver(true);
-    }
-  }, [draggedSymbolType]);
-
-  // Add global pointer event listeners for drop handling
-  useEffect(() => {
-    if (draggedSymbolType) {
-      document.addEventListener('pointerup', handlePointerUp);
-      document.addEventListener('pointermove', handleGlobalPointerMove);
-      
-      return () => {
-        document.removeEventListener('pointerup', handlePointerUp);
-        document.removeEventListener('pointermove', handleGlobalPointerMove);
-      };
-    }
-  }, [draggedSymbolType, handlePointerUp, handleGlobalPointerMove]);
 
   // Responsive scaling
   useEffect(() => {
@@ -1000,9 +989,9 @@ const CanvasArea: React.FC<CanvasAreaProps> = ({
         background: '#222',
         cursor: isPanning ? 'grabbing' : spacePressed ? 'grab' : selectToolActive ? 'pointer' : handToolActive ? 'grab' : wireToolActive ? 'crosshair' : textToolActive ? 'text' : 'default',
       }}
-      
-              onPointerMove={handlePointerMove}
-        onPointerLeave={handlePointerLeave}
+      onPointerMove={handlePointerMove}
+      onPointerLeave={handlePointerLeave}
+      onPointerUp={handleContainerPointerUp}
     >
       {/* Drop zone highlight */}
       {draggedSymbolType && (
@@ -1025,56 +1014,30 @@ const CanvasArea: React.FC<CanvasAreaProps> = ({
       {draggedSymbolType && dragPreviewPosition && (() => {
         const entry = symbolCatalog.find(s => s.type === draggedSymbolType);
         if (!entry) return null;
-        
         const displaySize = entry.displaySize || { width: 20, height: 20 };
         const connectionPoints = entry.defaultConnectionPoints || [];
-        
-        // Get stage for coordinate transformation
-        const stage = stageRef.current;
-        if (!stage) return null;
-        
-        const stageContainer = stage.container();
-        const boundingRect = stageContainer.getBoundingClientRect();
-        
-        // Transform screen coordinates to canvas coordinates
-        const screenX = dragPreviewPosition.x - boundingRect.left;
-        const screenY = dragPreviewPosition.y - boundingRect.top;
-        
-        // Account for the centered grid position and zoom/pan
+        const container = containerRef.current;
+        if (!container) return null;
+        const rect = container.getBoundingClientRect();
+        const x = dragPreviewPosition.x - rect.left;
+        const y = dragPreviewPosition.y - rect.top;
         const gridOffsetX = (containerSize.width - PAPER_WIDTH) / 2;
         const gridOffsetY = (containerSize.height - PAPER_HEIGHT) / 2;
-        
-        const canvasX = (screenX - gridOffsetX - pan.x) / zoom;
-        const canvasY = (screenY - gridOffsetY - pan.y) / zoom;
-        
-        // Calculate symbol position (center on cursor)
-        let symbolX = canvasX - displaySize.width / 2;
-        let symbolY = canvasY - displaySize.height / 2;
-        
-        // Snap to grid if enabled
-        if (snapToGrid) {
-          const grid = useCanvasStore.getState().gridSize || GRID_SPACING;
-          
-          if (connectionPoints.length > 0) {
-            const primaryCP = connectionPoints[0];
-            const cpX = primaryCP.position.x;
-            const cpY = primaryCP.position.y;
-            
-            const targetCPX = Math.round((symbolX + cpX) / grid) * grid;
-            const targetCPY = Math.round((symbolY + cpY) / grid) * grid;
-            
-            symbolX = targetCPX - cpX;
-            symbolY = targetCPY - cpY;
-          } else {
-            symbolX = Math.round(symbolX / grid) * grid;
-            symbolY = Math.round(symbolY / grid) * grid;
-          }
-        }
-        
+        // Initial position (centered on cursor)
+        let symbolX = (x - gridOffsetX - pan.x) / zoom - displaySize.width / 2;
+        let symbolY = (y - gridOffsetY - pan.y) / zoom - displaySize.height / 2;
+        // Snap
+        const snapped = snapSymbolToGrid(symbolX, symbolY, entry);
+        // Clamp
+        const clamped = clampSymbolPosition(snapped.x, snapped.y, displaySize);
+        // Overlap check
+        const overlapping = isOverlapping(clamped.x, clamped.y, displaySize);
+        // Show red border if invalid
+        const borderColor = overlapping ? '#d32f2f' : '#1976d2';
+        const backgroundColor = overlapping ? 'rgba(211,47,47,0.08)' : 'rgba(25,118,210,0.1)';
         // Transform back to screen coordinates for preview
-        const previewX = symbolX * zoom + pan.x + gridOffsetX;
-        const previewY = symbolY * zoom + pan.y + gridOffsetY;
-        
+        const previewX = clamped.x * zoom + pan.x + gridOffsetX;
+        const previewY = clamped.y * zoom + pan.y + gridOffsetY;
         return (
           <div
             style={{
@@ -1083,9 +1046,9 @@ const CanvasArea: React.FC<CanvasAreaProps> = ({
               top: previewY,
               width: displaySize.width * zoom,
               height: displaySize.height * zoom,
-              border: '2px dashed #1976d2',
+              border: `2px dashed ${borderColor}`,
               borderRadius: '4px',
-              backgroundColor: 'rgba(25, 118, 210, 0.1)',
+              backgroundColor,
               pointerEvents: 'none',
               zIndex: 1000,
               transform: 'translate(-50%, -50%)',
@@ -1096,7 +1059,6 @@ const CanvasArea: React.FC<CanvasAreaProps> = ({
             {connectionPoints.map((cp, index) => {
               const cpScreenX = previewX + (cp.position.x - displaySize.width / 2) * zoom;
               const cpScreenY = previewY + (cp.position.y - displaySize.height / 2) * zoom;
-              
               return (
                 <div
                   key={index}

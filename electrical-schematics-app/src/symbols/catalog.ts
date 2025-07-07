@@ -1019,39 +1019,11 @@ export const symbolCatalog: SymbolCatalogEntry[] = [
   },
 ];
 
-// For each symbol in symbolCatalog, ensure displaySize, connectionPointRadius, strokeWidth, selectionStrokeWidth, and grid-aligned connection points
-const DEFAULT_SIZE = 10;
+const GRID_SIZE = 20;
 symbolCatalog.forEach(symbol => {
-  // Set displaySize: scale down all symbols
-  if (!symbol.displaySize) {
-    symbol.displaySize = { width: DEFAULT_SIZE, height: DEFAULT_SIZE };
-  } else {
-    // If the symbol is much larger, scale down proportionally
-    const maxDim = Math.max(symbol.displaySize.width, symbol.displaySize.height);
-    if (maxDim > 2 * DEFAULT_SIZE) {
-      const scale = DEFAULT_SIZE / 20; // original default was 20
-      symbol.displaySize.width = Math.round(symbol.displaySize.width * scale);
-      symbol.displaySize.height = Math.round(symbol.displaySize.height * scale);
-    } else {
-      symbol.displaySize.width = DEFAULT_SIZE;
-      symbol.displaySize.height = DEFAULT_SIZE;
-    }
-  }
-  // Set connectionPointRadius, strokeWidth, selectionStrokeWidth
+  // Force all symbols to be the same size as the grid
+  symbol.displaySize = { width: GRID_SIZE, height: GRID_SIZE };
   symbol.connectionPointRadius = 2;
   symbol.strokeWidth = 1.5;
   symbol.selectionStrokeWidth = 2.5;
-  // Snap connection points to edges (0 or width/height)
-  if (symbol.defaultConnectionPoints) {
-    const w = symbol.displaySize.width;
-    const h = symbol.displaySize.height;
-    symbol.defaultConnectionPoints = symbol.defaultConnectionPoints.map(cp => {
-      let x = cp.position.x;
-      let y = cp.position.y;
-      // Snap to 0 or w for x, 0 or h for y
-      x = (Math.abs(x - w) < Math.abs(x - 0)) ? w : 0;
-      y = (Math.abs(y - h) < Math.abs(y - 0)) ? h : 0;
-      return { ...cp, position: { x, y } };
-    });
-  }
 });

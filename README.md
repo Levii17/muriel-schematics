@@ -1,0 +1,106 @@
+<p align="center">
+  <img src="public/brand/muriel-lockup.png" alt="Muriel" width="320" />
+</p>
+
+# Muriel Schematics
+
+A searchable library of IEC-style electrical schematic symbols, plus a small in-browser schematic editor that puts your circuit on a proper drawing sheet with a title block.
+
+**Live demo:** https://levii17.github.io/symbol-library/ &nbsp;·&nbsp; **Stack:** React 19, TypeScript (strict), Vite, Vitest. React is the only runtime dependency.
+
+| Library | Editor with drawing sheet | Dark theme |
+| --- | --- | --- |
+| ![Library](docs/library-light.png) | ![Editor](docs/editor-light.png) | ![Dark](docs/editor-dark.png) |
+
+An exported A3 sheet is in [`docs/example-sheet.svg`](docs/example-sheet.svg).
+
+## What it does
+
+**Library**
+- 35 symbols in 9 categories: breakers, isolators, fuse, push buttons, e-stop, coils, contactor, contacts (including on-delay timer contacts), overload relays, motors (single-phase, DOL, star-delta), supply, transformer, earth, meters, lamp and passives.
+- Weighted search over name, synonyms, reference letter and terminal labels (`isolator`, `dol`, `mcb`, `a1`, `timer`). Press `/` to focus it.
+- Optional coloured terminals (input / output / I-O) with labels, and a details drawer listing every terminal and typical use.
+- Copy or download any symbol as a standalone SVG, or as a PNG.
+- Light and dark themes, keyboard accessible, deep links such as `#/s/contactor-3p`.
+
+**Editor**
+- Click a symbol in the palette, click the canvas to place it; everything snaps to a 20 px grid.
+- Drag from one terminal to another to draw an orthogonal wire. Wires re-route as parts move.
+- Rotate, duplicate, multi-select, nudge, delete, undo/redo. Parts auto-number (`Q1`, `K1`, `M1`…).
+- Pan and zoom, fit to content, autosave to `localStorage`.
+- **Drawing sheet** (toggle in the toolbar): A3 or A4 landscape paper with a border, zone references (columns 1–8, rows A–F) and a title block.
+- **Title block:** organisation, project, drawing title, details, drawn by, drawing number, date, scale, revision and sheet. Edit the fields in the inspector; the block updates live. Long values are shortened with an ellipsis instead of overflowing their cell.
+- **Export:** SVG (sheet sized in millimetres, so it opens at true paper size), PNG, or print / save as PDF from the browser. A warning appears if parts sit outside the frame or under the title block.
+
+## Title block layout
+
+The block is 180 × 36 mm and sits flush in the bottom-right corner of the frame:
+
+```
+┌────────┬──────────────────────┬──────────────────────┐
+│        │ ORGANISATION         │ PROJECT              │
+│ MURIEL ├──────────────────────┼──────────────────────┤
+│  logo  │ DRAWING TITLE        │ DETAILS              │
+│        ├───────┬───────┬──────┼──────┬─────┬────┬─────┤
+│        │ DRAWN │ DWG   │ DATE │SCALE │ REV │SHEET│
+└────────┴───────┴───────┴──────┴──────┴─────┴─────┘
+```
+
+It follows the structure of a typical EGD title block, with the caption above each value (instead of inside it) so blank fields still read clearly. Everything is drawn as ordinary SVG primitives, so the canvas, SVG export and PNG export all render it with the same code. The Muriel logo tile is a vector recreation of `muriel-logo.png`, so it stays sharp when zoomed or printed.
+
+## How it is built
+
+The key design decision: **a symbol is data, not markup.**
+
+```ts
+{
+  id: 'contactor-3p',
+  name: 'Contactor, 3-pole',
+  category: 'coils',
+  reference: 'K',
+  width: 220, height: 80,            // multiples of 20 so rotation pivots stay on the grid
+  body: [ ...pole(20, 'no'), link(28, 160), rect(160, 20, 40, 40), ... ],   // drawing primitives
+  terminals: [ { id: 'A1', label: 'A1', x: 180, y: 0, role: 'io', dir: 'up' }, ... ],
+}
+```
+
+One definition drives the React renderer, the standalone-SVG serialiser, terminal overlays, search, the details drawer and the editor's wiring and rotation maths. The drawing sheet uses the same primitives. Adding a symbol means adding an object; the tests then check it.
+
+```
+src/
+  data/       symbol definitions, primitives (pole(), link(), …), categories
+  lib/        search, SVG serialiser + PNG export, print, hooks (hash router, theme, toast)
+  components/ library UI: cards, details drawer, glyph renderer, header
+  editor/     model & geometry, history reducer, wire routing, drawing sheet + title block,
+              persistence, export, example circuit, UI
+public/       favicons, web manifest, brand assets
+```
+
+`npm test` runs 48 tests covering symbol data integrity, search ranking, terminal rotation for every symbol at all four angles, orthogonal wire routing, the undo/redo reducer, storage validation, sheet and title-block geometry, and SVG export.
+
+## Run it
+
+```bash
+npm install
+npm run dev        # http://localhost:5173
+npm test
+npm run build      # type-check + production build into dist/
+```
+
+Pushing to `main` runs `.github/workflows/deploy.yml` (type-check, test, build, GitHub Pages). In the repository settings set **Pages → Source → GitHub Actions**. The app uses hash routing and relative asset paths, so it works under any sub-path.
+
+## Brand assets
+
+`public/` holds the favicon set and web manifest; `public/brand/` holds the logo mark, the tile and the full lockup. The 16, 32 and 48 px favicons use the "M" mark on its own, because the full wordmark is unreadable that small. The 180, 192 and 512 px icons are the supplied lockup.
+
+## Notes on the standards
+
+Symbols follow IEC 60617-style conventions (cross on breaker poles, bar on isolators, NO/NC contact numbering 13-14 / 21-22 / 95-96, "parachute" arc on timer contacts). This is a learning and portfolio reference, **not a certified drawing standard**. Check a symbol against the current IEC 60617 / SANS documents before using it in a deliverable. The title block is modelled on common practice rather than the full ISO 7200 field list.
+
+## Ideas for next steps
+
+Text annotations, a bill of materials from the placed parts, multi-sheet drawings (the `Sheet` field is already there), DIN-rail / panel layout, a netlist export, and a backend (save and share drawings by link) to make it a full-stack piece.
+
+## Licence
+
+MIT. The Muriel name and logo are the author's.

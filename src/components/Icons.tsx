@@ -19,6 +19,7 @@ export const RedoIcon = () => <Icon><path d="m15 14 5-5-5-5" /><path d="M20 9H10
 export const DuplicateIcon = () => <Icon><rect x="8" y="8" width="12" height="12" rx="2" /><path d="M4 16V6a2 2 0 0 1 2-2h10" /></Icon>
 export const FitIcon = () => <Icon><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" /></Icon>
 export const PrintIcon = () => <Icon><path d="M7 9V4h10v5" /><rect x="4" y="9" width="16" height="8" rx="2" /><path d="M7 14h10v6H7z" /></Icon>
+export const WarnIcon = () => <Icon><path d="M12 4 3 20h18L12 4Z" /><path d="M12 10v4M12 17.5v.01" /></Icon>
 export const PlusIcon = () => <Icon><path d="M12 5v14M5 12h14" /></Icon>
 export const MinusIcon = () => <Icon><path d="M5 12h14" /></Icon>
 export const GitHubIcon = () => (

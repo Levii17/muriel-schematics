@@ -7,7 +7,7 @@ import type { Prim, PrimStyle } from '../data/types'
  * snap grid is 5 mm and the 40 px border is the usual 10 mm.
  */
 
-export type PaperSize = 'A3' | 'A4'
+export type PaperSize = 'A4' | 'A3' | 'A2' | 'A1'
 
 export interface TitleFields {
   organization: string
@@ -30,9 +30,14 @@ export interface SheetConfig {
 
 /** Landscape paper in px, with the number of zone columns / rows along each edge. */
 export const PAPER: Record<PaperSize, { w: number; h: number; cols: number; rows: number }> = {
-  A3: { w: 1680, h: 1188, cols: 8, rows: 6 },
   A4: { w: 1188, h: 840, cols: 6, rows: 4 },
+  A3: { w: 1680, h: 1188, cols: 8, rows: 6 },
+  A2: { w: 2376, h: 1680, cols: 12, rows: 8 },
+  A1: { w: 3364, h: 2376, cols: 16, rows: 12 },
 }
+
+/** Smallest to largest, for "pick a bigger sheet" logic. */
+export const PAPER_ORDER: PaperSize[] = ['A4', 'A3', 'A2', 'A1']
 
 export const MARGIN = 40
 export const BLOCK_W = 720
@@ -98,7 +103,7 @@ export function mergeSheet(raw: unknown): SheetConfig {
   }
   return {
     enabled: r.enabled === true,
-    size: r.size === 'A4' || r.size === 'A3' ? r.size : base.size,
+    size: r.size && r.size in PAPER ? r.size : base.size,
     fields,
   }
 }

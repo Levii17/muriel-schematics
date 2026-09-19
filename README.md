@@ -6,14 +6,17 @@
 
 A searchable library of IEC-style electrical schematic symbols, plus a small in-browser schematic editor that puts your circuit on a proper drawing sheet with a title block.
 
-**Live demo:** [https://levii17.github.io/muriel-schematics/](https://levii17.github.io/muriel-schematics/)
-**Stack:** React 19, TypeScript (strict), Vite, Vitest. React is the only runtime dependency.
+**Live demo:** [https://levii17.github.io/muriel-schematics/](https://levii17.github.io/muriel-schematics/) &nbsp;·&nbsp; **Stack:** React 19, TypeScript (strict), Vite, Vitest. React is the only runtime dependency.
 
 | Library | Editor with drawing sheet | Dark theme |
 | --- | --- | --- |
 | ![Library](docs/library-light.png) | ![Editor](docs/editor-light.png) | ![Dark](docs/editor-dark.png) |
 
 An exported A3 sheet is in [`docs/example-sheet.svg`](docs/example-sheet.svg).
+
+Resizing in practice: a 125% breaker and a 50% variable resistor whose leads land exactly on poles T1 and T2, so both wires run straight.
+
+![Resistor bridging two poles](docs/resize-example.png)
 
 ## What it does
 
@@ -28,23 +31,26 @@ An exported A3 sheet is in [`docs/example-sheet.svg`](docs/example-sheet.svg).
 - Click a symbol in the palette, click the canvas to place it; everything snaps to a 20 px grid.
 - Drag from one terminal to another to draw an orthogonal wire. Wires re-route as parts move.
 - Rotate, duplicate, multi-select, nudge, delete, undo/redo. Parts auto-number (`Q1`, `K1`, `M1`…).
+- **Resize parts** (`[` and `]`, or the Size control in the inspector): 50%, 75%, 100%, 125%, 150%, 200%, 250%, 300%. A part grows or shrinks about its first terminal, so its wire stays attached; line weight stays constant. Use it when symbols are out of proportion, for example a resistor bridging two breaker poles.
+- **Magnetic alignment:** when you drag or place a part, its terminals snap onto the terminals of other parts within half a grid cell (a dashed guide shows the match). That is how differently sized parts line up exactly, for example a 50% resistor between the poles of a 125% breaker.
+- **Whole-drawing scale:** 50% to 200% scales every part and the spacing between them together, keeping wires aligned.
 - Pan and zoom, fit to content, autosave to `localStorage`.
-- **Drawing sheet** (toggle in the toolbar): A3 or A4 landscape paper with a border, zone references (columns 1–8, rows A–F) and a title block.
+- **Drawing sheet** (toggle in the toolbar): A4, A3, A2 or A1 landscape paper with a border, zone references (columns 1–8, rows A–F) and a title block.
 - **Title block:** organisation, project, drawing title, details, drawn by, drawing number, date, scale, revision and sheet. Edit the fields in the inspector; the block updates live. Long values are shortened with an ellipsis instead of overflowing their cell.
-- **Export:** SVG (sheet sized in millimetres, so it opens at true paper size), PNG, or print / save as PDF from the browser. A warning appears if parts sit outside the frame or under the title block.
+- **Export:** SVG (sheet sized in millimetres, so it opens at true paper size), PNG, or print / save as PDF from the browser. - **Keeping it on the sheet:** parts outside the frame or under the title block get a red outline and a "n off sheet" chip in the toolbar. "Move onto the sheet" centres the drawing in the free space, switching to the smallest larger paper if needed; if it is too big even for A1, "Shrink to 75% and fit" scales it down and places it.
 
 ## Title block layout
 
 The block is 180 × 36 mm and sits flush in the bottom-right corner of the frame:
 
 ```
-┌────────┬──────────────────────┬───────────────────┐
-│        │ ORGANISATION         │ PROJECT           │
-│ MURIEL ├──────────────────────┼───────────────────┤
-│  logo  │ DRAWING TITLE        │ DETAILS           │
-│        ├───────┬───────┬──────┼──────┬─────┬────┬─┤
-│        │ DRAWN │ DWG   │ DATE │SCALE │ REV │SHEET │
-└────────┴───────┴───────┴──────┴──────┴─────┴──────┘
+┌────────┬──────────────────────┬──────────────────────┐
+│        │ ORGANISATION         │ PROJECT              │
+│ MURIEL ├──────────────────────┼──────────────────────┤
+│  logo  │ DRAWING TITLE        │ DETAILS              │
+│        ├───────┬───────┬──────┼──────┬─────┬────┬─────┤
+│        │ DRAWN │ DWG   │ DATE │SCALE │ REV │SHEET│
+└────────┴───────┴───────┴──────┴──────┴─────┴─────┘
 ```
 
 It follows the structure of a typical EGD title block, with the caption above each value (instead of inside it) so blank fields still read clearly. Everything is drawn as ordinary SVG primitives, so the canvas, SVG export and PNG export all render it with the same code. The Muriel logo tile is a vector recreation of `muriel-logo.png`, so it stays sharp when zoomed or printed.
@@ -77,7 +83,7 @@ src/
 public/       favicons, web manifest, brand assets
 ```
 
-`npm test` runs 48 tests covering symbol data integrity, search ranking, terminal rotation for every symbol at all four angles, orthogonal wire routing, the undo/redo reducer, storage validation, sheet and title-block geometry, and SVG export.
+`npm test` runs 84 tests covering symbol data integrity, search ranking, terminal positions for every symbol at every size and rotation, symbol scaling (including SVG arcs), orthogonal wire routing, magnetic alignment, the undo/redo reducer, storage validation, sheet and title-block geometry, fit-to-sheet planning, and SVG export.
 
 ## Run it
 
@@ -93,6 +99,12 @@ Pushing to `main` runs `.github/workflows/deploy.yml` (type-check, test, build, 
 ## Brand assets
 
 `public/` holds the favicon set and web manifest; `public/brand/` holds the logo mark, the tile and the full lockup. The 16, 32 and 48 px favicons use the "M" mark on its own, because the full wordmark is unreadable that small. The 180, 192 and 512 px icons are the supplied lockup.
+
+## Sizing and routing details
+
+- Sizes are presets rather than free scaling so terminals stay on a 5 px lattice (the grid is 20 px, and 40 px pole pitches map to useful values such as 50 px at 125%). New parts are placed so their first terminal, not their centre, lands on the grid.
+- The wire router picks, from a set of straight, L-, Z- and U-shaped candidates, the one with the fewest bends. A wire may leave a terminal straight out or arrive sideways, but never passes back through its own part, and leaving sideways is penalised heavily because it would run along the row of neighbouring terminals and look like a short circuit.
+- Part labels keep a fixed size on the sheet whatever the part size.
 
 ## Notes on the standards
 

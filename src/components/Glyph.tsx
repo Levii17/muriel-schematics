@@ -1,4 +1,5 @@
 import type { CSSProperties } from 'react'
+import { scaleBody } from '../data/scale'
 import type { Prim, PrimStyle, SymbolDef } from '../data/types'
 import { DASH, STROKE } from '../lib/svg'
 
@@ -42,10 +43,10 @@ export function Prims({ prims }: { prims: Prim[] }) {
 }
 
 /** The symbol body with the shared stroke style. Colour comes from CSS `color`. */
-export function GlyphBody({ def }: { def: SymbolDef }) {
+export function GlyphBody({ def, scale = 1 }: { def: SymbolDef; scale?: number }) {
   return (
     <g className="glyph-body" fill="none" stroke="currentColor" strokeWidth={STROKE} strokeLinecap="round" strokeLinejoin="round">
-      <Prims prims={def.body} />
+      <Prims prims={scaleBody(def, scale)} />
     </g>
   )
 }

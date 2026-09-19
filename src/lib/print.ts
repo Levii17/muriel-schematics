@@ -2,7 +2,7 @@
  * Open the drawing in a bare page sized to the paper and start the browser's print dialog,
  * which is also the way to "Save as PDF". Returns false if the pop-up was blocked.
  */
-export function printSheet(svg: string, size: 'A3' | 'A4'): boolean {
+export function printSheet(svg: string, size: string): boolean {
   const w = window.open('', '_blank')
   if (!w) return false
   w.document.write(

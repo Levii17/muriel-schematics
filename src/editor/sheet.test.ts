@@ -3,7 +3,7 @@ import type { Prim } from '../data/types'
 import { BLOCK_H, BLOCK_W, FIELD_DEFS, MARGIN, PAPER, blockBox, defaultSheet, fit, frameBox, mergeSheet, sheetPrims } from './sheet'
 import type { PaperSize, SheetConfig } from './sheet'
 
-const sizes: PaperSize[] = ['A3', 'A4']
+const sizes: PaperSize[] = ['A4', 'A3', 'A2', 'A1']
 const sample = (size: PaperSize): SheetConfig => ({
   ...defaultSheet(),
   enabled: true,

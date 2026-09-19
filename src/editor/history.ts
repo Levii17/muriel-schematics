@@ -1,5 +1,6 @@
+import { SCALES } from '../data/scale'
 import type { Doc, Endpoint, Item, Rot } from './model'
-import { emptyDoc, uid } from './model'
+import { anchorOffset, defOf, emptyDoc, itemScale, scaleDrawing, snap, stepScale, uid } from './model'
 import type { PaperSize, TitleFields } from './sheet'
 
 export interface History {
@@ -12,6 +13,10 @@ export type Action =
   | { type: 'add'; item: Item }
   | { type: 'move'; ids: string[]; dx: number; dy: number }
   | { type: 'rotate'; ids: string[] }
+  | { type: 'resize'; ids: string[]; dir: 1 | -1 }
+  | { type: 'set-scale'; ids: string[]; scale: number }
+  | { type: 'scale-all'; factor: number }
+  | { type: 'fit-sheet'; dx: number; dy: number; size: PaperSize }
   | { type: 'delete-items'; ids: string[] }
   | { type: 'delete-wire'; id: string }
   | { type: 'label'; id: string; label: string }
@@ -25,6 +30,35 @@ export type Action =
 const LIMIT = 100
 
 export const initHistory = (doc: Doc = emptyDoc()): History => ({ past: [], present: doc, future: [] })
+
+/** Change a part's size while keeping its first terminal exactly where it is, so its wire stays attached. */
+function withScale(item: Item, scale: number): Item {
+  if (!SCALES.includes(scale as (typeof SCALES)[number]) || scale === itemScale(item)) return item
+  const def = defOf(item)
+  const before = anchorOffset(def, itemScale(item), item.rot)
+  const after = anchorOffset(def, scale, item.rot)
+  return { ...item, scale, x: item.x + before.x - after.x, y: item.y + before.y - after.y }
+}
+
+/** Rotate a quarter turn about the pivot, then nudge so the first terminal is back on the grid. */
+function rotated(item: Item): Item {
+  const def = defOf(item)
+  const rot = ((item.rot + 90) % 360) as Rot
+  const o = anchorOffset(def, itemScale(item), rot)
+  return { ...item, rot, x: item.x + snap(item.x + o.x) - (item.x + o.x), y: item.y + snap(item.y + o.y) - (item.y + o.y) }
+}
+
+/** Apply fn to the listed items; return the same doc object if nothing changed, so no-ops stay out of the undo history. */
+function mapItems(doc: Doc, ids: string[], fn: (i: Item) => Item): Doc {
+  let changed = false
+  const items = doc.items.map((i) => {
+    if (!ids.includes(i.id)) return i
+    const next = fn(i)
+    if (next !== i) changed = true
+    return next
+  })
+  return changed ? { ...doc, items } : doc
+}
 
 const sameEnd = (a: Endpoint, b: Endpoint) => a.item === b.item && a.term === b.term
 
@@ -40,11 +74,18 @@ function apply(doc: Doc, action: Action): Doc {
         ),
       }
     case 'rotate':
+      return { ...doc, items: doc.items.map((i) => (action.ids.includes(i.id) ? rotated(i) : i)) }
+    case 'resize':
+      return mapItems(doc, action.ids, (i) => withScale(i, stepScale(itemScale(i), action.dir)))
+    case 'set-scale':
+      return mapItems(doc, action.ids, (i) => withScale(i, action.scale))
+    case 'scale-all':
+      return scaleDrawing(doc, action.factor) ?? doc
+    case 'fit-sheet':
       return {
         ...doc,
-        items: doc.items.map((i) =>
-          action.ids.includes(i.id) ? { ...i, rot: (((i.rot + 90) % 360) as Rot) } : i,
-        ),
+        items: doc.items.map((i) => ({ ...i, x: i.x + action.dx, y: i.y + action.dy })),
+        sheet: { ...doc.sheet, size: action.size },
       }
     case 'delete-items':
       return {

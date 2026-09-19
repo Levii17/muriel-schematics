@@ -29,6 +29,14 @@ describe('sanitizeDoc', () => {
     expect(clean.wires.length).toBeGreaterThan(0)
   })
 
+  it('keeps valid part sizes and drops invalid ones', () => {
+    const doc = dolStarterExample()
+    const sized = { ...doc, items: doc.items.map((i, n) => ({ ...i, scale: n === 0 ? 1.5 : n === 1 ? 1.3 : undefined })) }
+    const clean = sanitizeDoc(JSON.parse(JSON.stringify(sized)))!
+    expect(clean.items[0].scale).toBe(1.5)
+    expect(clean.items[1].scale).toBeUndefined()
+  })
+
   it('drops wires whose terminal no longer exists', () => {
     const doc = dolStarterExample()
     const broken = { ...doc, wires: [...doc.wires, { id: 'x', a: { item: 'e-q1', term: 'NOPE' }, b: { item: 'e-k1', term: '1' } }] }

@@ -139,4 +139,17 @@
 .sheet-form .pair { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; }
 .sheet-form .field, .sheet-form .field input { min-width: 0; width: 100%; }
 .size-pick select { height: 30px; border-radius: 8px; border: 1px solid var(--line-strong); background: var(--surface-2); color: var(--ink); font: 13px var(--font-sans); padding: 0 6px; }
+
+.conflict-box { fill: color-mix(in srgb, var(--danger) 10%, transparent); stroke: var(--danger); stroke-width: 1.5; stroke-dasharray: 4 3; pointer-events: none; }
+.chip-btn { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; margin-left: 6px; border-radius: 999px; border: 1px solid var(--danger); background: color-mix(in srgb, var(--danger) 10%, transparent); color: var(--danger); font: 500 12.5px var(--font-sans); cursor: pointer; white-space: nowrap; }
+.chip-btn svg { width: 15px; height: 15px; }
+.size-control .stepper { display: flex; align-items: center; gap: 4px; }
+.size-control .stepper .mono { min-width: 56px; text-align: center; font-size: 14px; color: var(--ink); }
+.size-control .stepper .icon-btn { border-color: var(--line-strong); background: var(--surface-2); width: 32px; height: 32px; }
+.size-control .stepper .btn { margin-left: auto; }
+.warn p + button, .warn p + p { margin-top: 6px; }
+.warn button { color: var(--ink); }
 .warn { color: var(--danger); background: color-mix(in srgb, var(--danger) 9%, transparent); border-radius: 8px; padding: 8px 10px; }
+.factor-row { display: flex; gap: 6px; flex-wrap: wrap; }
+.sheet-form + .sheet-form { margin-top: 0; }
+.guide { stroke: var(--accent); stroke-width: 1; stroke-dasharray: 4 4; opacity: 0.7; pointer-events: none; }

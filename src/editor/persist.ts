@@ -1,4 +1,5 @@
 import { getSymbol } from '../data'
+import { SCALES } from '../data/scale'
 import type { Doc } from './model'
 import { mergeSheet } from './sheet'
 
@@ -13,6 +14,9 @@ export function sanitizeDoc(raw: unknown): Doc | null {
   const items = r.items.filter(
     (i) => i && getSymbol(i.symbolId) && Number.isFinite(i.x) && Number.isFinite(i.y) && [0, 90, 180, 270].includes(i.rot),
   )
+  for (const i of items) {
+    if (i.scale !== undefined && !SCALES.includes(i.scale as (typeof SCALES)[number])) delete i.scale
+  }
   const byId = new Map(items.map((i) => [i.id, i]))
   const hasTerminal = (e: { item: string; term: string } | undefined) => {
     const it = e && byId.get(e.item)

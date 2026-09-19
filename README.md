@@ -6,7 +6,8 @@
 
 A searchable library of IEC-style electrical schematic symbols, plus a small in-browser schematic editor that puts your circuit on a proper drawing sheet with a title block.
 
-**Live demo:** https://levii17.github.io/symbol-library/ &nbsp;·&nbsp; **Stack:** React 19, TypeScript (strict), Vite, Vitest. React is the only runtime dependency.
+**Live demo:** [https://levii17.github.io/muriel-schematics/](https://levii17.github.io/muriel-schematics/)
+**Stack:** React 19, TypeScript (strict), Vite, Vitest. React is the only runtime dependency.
 
 | Library | Editor with drawing sheet | Dark theme |
 | --- | --- | --- |
@@ -37,13 +38,13 @@ An exported A3 sheet is in [`docs/example-sheet.svg`](docs/example-sheet.svg).
 The block is 180 × 36 mm and sits flush in the bottom-right corner of the frame:
 
 ```
-┌────────┬──────────────────────┬──────────────────────┐
-│        │ ORGANISATION         │ PROJECT              │
-│ MURIEL ├──────────────────────┼──────────────────────┤
-│  logo  │ DRAWING TITLE        │ DETAILS              │
-│        ├───────┬───────┬──────┼──────┬─────┬────┬─────┤
-│        │ DRAWN │ DWG   │ DATE │SCALE │ REV │SHEET│
-└────────┴───────┴───────┴──────┴──────┴─────┴─────┘
+┌────────┬──────────────────────┬───────────────────┐
+│        │ ORGANISATION         │ PROJECT           │
+│ MURIEL ├──────────────────────┼───────────────────┤
+│  logo  │ DRAWING TITLE        │ DETAILS           │
+│        ├───────┬───────┬──────┼──────┬─────┬────┬─┤
+│        │ DRAWN │ DWG   │ DATE │SCALE │ REV │SHEET │
+└────────┴───────┴───────┴──────┴──────┴─────┴──────┘
 ```
 
 It follows the structure of a typical EGD title block, with the caption above each value (instead of inside it) so blank fields still read clearly. Everything is drawn as ordinary SVG primitives, so the canvas, SVG export and PNG export all render it with the same code. The Muriel logo tile is a vector recreation of `muriel-logo.png`, so it stays sharp when zoomed or printed.

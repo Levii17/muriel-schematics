@@ -7,6 +7,7 @@ import type { Item, Rot } from './model'
 import { SCALES } from '../data/scale'
 import { GRID, alignDelta, itemBounds, scaleDrawing, terminalPoints, nextLabel, pivotOf, routeWire, snap, snapPlacement, stepScale, terminalWorld } from './model'
 import { conflictingItemIds, planFit, planShrink, sheetConflicts } from './checks'
+import { clonePayload, copyPayload } from './clipboard'
 import { blockBox, frameBox } from './sheet'
 
 const item = (symbolId: string, rot: Rot = 0, x = 200, y = 200, label = ''): Item => ({
@@ -304,8 +305,10 @@ describe('part size', () => {
   it('copies size when duplicating and exports resized parts', () => {
     let h = initHistory(dolStarterExample())
     h = reducer(h, { type: 'set-scale', ids: ['e-f1'], scale: 2 })
-    h = reducer(h, { type: 'duplicate', ids: ['e-f1'], newIds: ['copy'], labels: ['F2'] })
-    expect(h.present.items.find((i) => i.id === 'copy')!.scale).toBe(2)
+    const payload = copyPayload(h.present, { items: ['e-f1'], wires: [] })!
+    const clone = clonePayload(h.present, payload, 40, 40)
+    h = reducer(h, { type: 'paste', payload: clone })
+    expect(h.present.items.find((i) => i.id === clone.items[0].id)!.scale).toBe(2)
     const { svg } = diagramToSvg(h.present)
     expect(svg).toContain('translate(-') // scaled pivot offset is applied
   })

@@ -4,34 +4,52 @@ import { CATEGORIES, SYMBOLS, getSymbol } from '../data'
 import type { SymbolDef } from '../data/types'
 import { GlyphBody, Prims, SymbolSvg } from '../components/Glyph'
 import {
-  DuplicateIcon, FitIcon, MinusIcon, PlusIcon, PrintIcon, RedoIcon, RotateIcon, TrashIcon, UndoIcon, WarnIcon,
+  CursorIcon, DuplicateIcon, FitIcon, FlipHIcon, FlipVIcon, HandIcon, MinusIcon, PlusIcon, PrintIcon, RedoIcon, RotateIcon,
+  TrashIcon, UndoIcon, WarnIcon,
 } from '../components/Icons'
 import { loadJson, saveJson } from '../lib/hooks'
 import { printSheet } from '../lib/print'
 import { searchSymbols } from '../lib/search'
 import { downloadBlob, downloadText, svgToPngBlob } from '../lib/svg'
+import type { AlignMode, Axis } from './align'
+import { conflictingItemIds, planFit, planShrink } from './checks'
+import type { Payload } from './clipboard'
+import { clonePayload, copyPayload } from './clipboard'
 import { dolStarterExample } from './examples'
 import { diagramToSvg, junctions, labelPos, wireGeometries } from './export'
 import { initHistory, reducer } from './history'
-import { conflictingItemIds, planFit, planShrink } from './checks'
-import type { FitPlan } from './checks'
+import { Inspector } from './Inspector'
+import type { Doc, Endpoint, Item, Pt, Rot } from './model'
+import {
+  alignDelta, defOf, itemBounds, itemMirror, itemScale, nextLabel, pivotOf, pointsToPath, routeWire, scaleDrawing, snap,
+  snapPlacement, terminalPoints, terminalWorld, uid,
+} from './model'
 import { sanitizeDoc } from './persist'
-import { FIELD_DEFS, PAPER, PAPER_ORDER, paperBox, sheetPrims } from './sheet'
-import type { PaperSize, SheetConfig, TitleFields } from './sheet'
-import type { Doc, Endpoint, Item, Pt } from './model'
-import { SCALES } from '../data/scale'
-import { alignDelta, defOf, itemBounds, itemScale, nextLabel, scaleDrawing, terminalPoints, pivotOf, pointsToPath, routeWire, snap, snapPlacement, terminalWorld, uid } from './model'
+import type { Selection } from './select'
+import { EMPTY, boxMode, isEmpty, itemsInBox, normBox, toggle, wiresInBox } from './select'
+import { PAPER, paperBox, sheetPrims } from './sheet'
+import { nextOrientation } from './transform'
 
 const STORAGE_KEY = 'es.doc.v1'
 const MIN_ZOOM = 0.3
 const MAX_ZOOM = 3
 const SNAP_RADIUS = 18
+/** Screen pixels a press must travel before it counts as a drag rather than a click. */
+const DRAG_THRESHOLD = 4
 
-type Selection = { kind: 'items'; ids: string[] } | { kind: 'wire'; id: string } | null
+type Tool = 'select' | 'pan'
 interface View {
   x: number
   y: number
   k: number
+}
+interface Marquee {
+  from: Pt
+  to: Pt
+  additive: boolean
+  sx: number
+  sy: number
+  moved: boolean
 }
 
 interface Props {
@@ -40,25 +58,44 @@ interface Props {
   onToast: (msg: string) => void
 }
 
+const isTextTarget = (t: EventTarget | null) => {
+  const el = t as HTMLElement | null
+  return !!el && ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName)
+}
+
 export default function Editor({ armId, loadExample, onToast }: Props) {
   const [hist, dispatch] = useReducer(reducer, undefined, () => initHistory(sanitizeDoc(loadJson<unknown>(STORAGE_KEY)) ?? dolStarterExample()))
   const doc = hist.present
 
   const [view, setView] = useState<View>({ x: 40, y: 40, k: 1 })
+  const [tool, setTool] = useState<Tool>('select')
+  const [space, setSpace] = useState(false)
+  const [panning, setPanning] = useState(false)
   const [armed, setArmed] = useState<string | null>(armId && getSymbol(armId) ? armId : null)
+  const [armedOrient, setArmedOrient] = useState<{ rot: Rot; mirror: boolean }>({ rot: 0, mirror: false })
   const [ghost, setGhost] = useState<Pt | null>(null)
-  const [selection, setSelection] = useState<Selection>(null)
-  const [drag, setDrag] = useState<{ ids: string[]; start: Pt; delta: Pt } | null>(null)
+  const [rawSelection, setSelection] = useState<Selection>(EMPTY)
+  const [drag, setDrag] = useState<{ ids: string[]; start: Pt; delta: Pt; clickId: string; shift: boolean } | null>(null)
+  const [marquee, setMarquee] = useState<Marquee | null>(null)
   const [wiring, setWiring] = useState<{ from: Endpoint; cursor: Pt; target: Endpoint | null } | null>(null)
   const [query, setQuery] = useState('')
   const [guides, setGuides] = useState<{ x?: number; y?: number }>({})
 
   const svgRef = useRef<SVGSVGElement>(null)
   const panRef = useRef<{ sx: number; sy: number; vx: number; vy: number } | null>(null)
+  const clipRef = useRef<Payload | null>(null)
+  const pasteCount = useRef(0)
   const viewRef = useRef(view)
   viewRef.current = view
 
   useEffect(() => saveJson(STORAGE_KEY, doc), [doc])
+
+  // Undo, redo and deletes can leave ids behind; only ever act on ones that still exist.
+  const selection: Selection = useMemo(() => {
+    const items = rawSelection.items.filter((id) => doc.items.some((i) => i.id === id))
+    const wires = rawSelection.wires.filter((id) => doc.wires.some((w) => w.id === id))
+    return items.length === rawSelection.items.length && wires.length === rawSelection.wires.length ? rawSelection : { items, wires }
+  }, [rawSelection, doc.items, doc.wires])
 
   /* ---------- derived ---------- */
 
@@ -74,14 +111,14 @@ export default function Editor({ armId, loadExample, onToast }: Props) {
   const sheetArt = useMemo(() => (doc.sheet.enabled ? sheetPrims(doc.sheet) : null), [doc.sheet])
   const wires = useMemo(() => wireGeometries(shown), [shown])
   const dots = useMemo(() => junctions(shown), [shown])
-
-  const selectedItemIds = selection?.kind === 'items' ? selection.ids : []
-  const selectedItems = doc.items.filter((i) => selectedItemIds.includes(i.id))
+  const selectedItems = doc.items.filter((i) => selection.items.includes(i.id))
 
   const filtered = useMemo(() => searchSymbols(SYMBOLS, query), [query])
   const conflictIds = useMemo(() => conflictingItemIds(shown), [shown])
   const fitPlan = useMemo(() => planFit(doc), [doc])
   const shrinkPlan = useMemo(() => (fitPlan.ok ? null : planShrink(doc)), [doc, fitPlan])
+
+  const panMode = tool === 'pan' || space
 
   /* ---------- coordinates & view ---------- */
 
@@ -158,16 +195,77 @@ export default function Editor({ armId, loadExample, onToast }: Props) {
 
   /* ---------- actions ---------- */
 
+  const hasItems = selection.items.length > 0
+
   const rotateSelected = useCallback(() => {
-    if (selection?.kind === 'items') dispatch({ type: 'rotate', ids: selection.ids })
-  }, [selection])
+    if (armed) return setArmedOrient((o) => nextOrientation(o.rot, o.mirror, 'rot90'))
+    if (selection.items.length) dispatch({ type: 'rotate', ids: selection.items })
+  }, [armed, selection.items])
+
+  const flipSelected = useCallback(
+    (axis: Axis) => {
+      if (armed) return setArmedOrient((o) => nextOrientation(o.rot, o.mirror, axis === 'h' ? 'flipH' : 'flipV'))
+      if (selection.items.length) dispatch({ type: 'flip', ids: selection.items, axis })
+    },
+    [armed, selection.items],
+  )
 
   const resizeSelected = useCallback(
     (dir: 1 | -1) => {
-      if (selection?.kind === 'items') dispatch({ type: 'resize', ids: selection.ids, dir })
+      if (selection.items.length) dispatch({ type: 'resize', ids: selection.items, dir })
     },
-    [selection],
+    [selection.items],
   )
+
+  const deleteSelected = useCallback(() => {
+    if (isEmpty(selection)) return
+    dispatch({ type: 'delete', items: selection.items, wires: selection.wires })
+    setSelection(EMPTY)
+  }, [selection])
+
+  const copySelected = useCallback(
+    (quiet = false) => {
+      const payload = copyPayload(doc, selection)
+      if (!payload) return false
+      clipRef.current = payload
+      pasteCount.current = 0
+      if (!quiet) onToast(`Copied ${payload.items.length} ${payload.items.length === 1 ? 'part' : 'parts'}${payload.wires.length ? ` and ${payload.wires.length} ${payload.wires.length === 1 ? 'wire' : 'wires'}` : ''}`)
+      return true
+    },
+    [doc, selection, onToast],
+  )
+
+  const pasteFrom = useCallback(
+    (payload: Payload, offset: number) => {
+      const clone = clonePayload(doc, payload, offset, offset)
+      dispatch({ type: 'paste', payload: clone })
+      setSelection({ items: clone.items.map((i) => i.id), wires: [] })
+    },
+    [doc],
+  )
+
+  const pasteClipboard = useCallback(() => {
+    if (!clipRef.current) return onToast('Nothing to paste. Copy some parts first.')
+    pasteCount.current += 1
+    pasteFrom(clipRef.current, 40 * pasteCount.current)
+  }, [pasteFrom, onToast])
+
+  const cutSelected = useCallback(() => {
+    if (copySelected(true)) {
+      onToast('Cut. Paste with Ctrl+V.')
+      deleteSelected()
+    }
+  }, [copySelected, deleteSelected, onToast])
+
+  const duplicateSelected = useCallback(() => {
+    const payload = copyPayload(doc, selection)
+    if (payload) pasteFrom(payload, 40)
+  }, [doc, selection, pasteFrom])
+
+  const selectAll = useCallback(() => setSelection({ items: doc.items.map((i) => i.id), wires: doc.wires.map((w) => w.id) }), [doc])
+
+  const align = useCallback((mode: AlignMode) => dispatch({ type: 'align', ids: selection.items, mode }), [selection.items])
+  const distribute = useCallback((axis: Axis) => dispatch({ type: 'distribute', ids: selection.items, axis }), [selection.items])
 
   const fitToSheet = useCallback(() => {
     const plan = planFit(doc)
@@ -195,29 +293,6 @@ export default function Editor({ armId, loadExample, onToast }: Props) {
     [doc, fit, onToast],
   )
 
-  const deleteSelected = useCallback(() => {
-    if (selection?.kind === 'items') dispatch({ type: 'delete-items', ids: selection.ids })
-    else if (selection?.kind === 'wire') dispatch({ type: 'delete-wire', id: selection.id })
-    setSelection(null)
-  }, [selection])
-
-  const duplicateSelected = useCallback(() => {
-    if (selection?.kind !== 'items') return
-    const sim: Item[] = [...doc.items]
-    const newIds: string[] = []
-    const labels: string[] = []
-    for (const id of selection.ids) {
-      const src = doc.items.find((i) => i.id === id)
-      if (!src) continue
-      const label = nextLabel(sim, defOf(src))
-      newIds.push(uid('i'))
-      labels.push(label)
-      sim.push({ ...src, label })
-    }
-    dispatch({ type: 'duplicate', ids: selection.ids, newIds, labels })
-    setSelection({ kind: 'items', ids: newIds })
-  }, [selection, doc.items])
-
   const nearestTerminal = useCallback(
     (p: Pt, exclude: Endpoint | null): Endpoint | null => {
       let best: Endpoint | null = null
@@ -241,55 +316,105 @@ export default function Editor({ armId, loadExample, onToast }: Props) {
 
   /* ---------- keyboard ---------- */
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      const t = e.target as HTMLElement
-      if (['INPUT', 'TEXTAREA', 'SELECT'].includes(t.tagName)) return
-      const mod = e.ctrlKey || e.metaKey
-      const key = e.key.toLowerCase()
-      if (key === 'escape') {
-        setArmed(null)
-        setWiring(null)
-        setGhost(null)
-        setSelection(null)
-      } else if (key === 'delete' || key === 'backspace') {
+  // The handler is rebuilt every render and called through a ref, so it always sees current state.
+  const keyDown = useRef<(e: KeyboardEvent) => void>(() => {})
+  keyDown.current = (e: KeyboardEvent) => {
+    if (isTextTarget(e.target)) return
+    const mod = e.ctrlKey || e.metaKey
+    const key = e.key.toLowerCase()
+    const onControl = ['BUTTON', 'A'].includes((e.target as HTMLElement | null)?.tagName ?? '')
+
+    if (key === ' ' && !onControl) {
+      e.preventDefault()
+      setSpace(true)
+    } else if (key === 'escape') {
+      setArmed(null)
+      setWiring(null)
+      setGhost(null)
+      setMarquee(null)
+      setSelection(EMPTY)
+    } else if (key === 'delete' || key === 'backspace') {
+      e.preventDefault()
+      deleteSelected()
+    } else if (mod && key === 'z') {
+      e.preventDefault()
+      dispatch({ type: e.shiftKey ? 'redo' : 'undo' })
+    } else if (mod && key === 'y') {
+      e.preventDefault()
+      dispatch({ type: 'redo' })
+    } else if (mod && key === 'a') {
+      e.preventDefault()
+      selectAll()
+    } else if (mod && key === 'c') {
+      if (hasItems) {
         e.preventDefault()
-        deleteSelected()
-      } else if (mod && key === 'z') {
-        e.preventDefault()
-        dispatch({ type: e.shiftKey ? 'redo' : 'undo' })
-      } else if (mod && key === 'y') {
-        e.preventDefault()
-        dispatch({ type: 'redo' })
-      } else if (mod && key === 'd') {
-        e.preventDefault()
-        duplicateSelected()
-      } else if (!mod && key === 'r') {
-        rotateSelected()
-      } else if (!mod && (key === ']' || key === '=' || key === '+')) {
-        resizeSelected(1)
-      } else if (!mod && (key === '[' || key === '-')) {
-        resizeSelected(-1)
-      } else if (key.startsWith('arrow') && selection?.kind === 'items') {
-        e.preventDefault()
-        const step = e.shiftKey ? 100 : 20
-        const dx = key === 'arrowleft' ? -step : key === 'arrowright' ? step : 0
-        const dy = key === 'arrowup' ? -step : key === 'arrowdown' ? step : 0
-        dispatch({ type: 'move', ids: selection.ids, dx, dy })
+        copySelected()
       }
+    } else if (mod && key === 'x') {
+      if (hasItems) {
+        e.preventDefault()
+        cutSelected()
+      }
+    } else if (mod && key === 'v') {
+      e.preventDefault()
+      pasteClipboard()
+    } else if (mod && key === 'd') {
+      e.preventDefault()
+      duplicateSelected()
+    } else if (mod) {
+      return
+    } else if (key === 'r') {
+      rotateSelected()
+    } else if (key === 'f') {
+      flipSelected(e.shiftKey ? 'v' : 'h')
+    } else if (key === 'v') {
+      setTool('select')
+    } else if (key === 'h') {
+      setTool('pan')
+    } else if (key === ']' || key === '=' || key === '+') {
+      resizeSelected(1)
+    } else if (key === '[' || key === '-') {
+      resizeSelected(-1)
+    } else if (key.startsWith('arrow') && hasItems) {
+      e.preventDefault()
+      const step = e.shiftKey ? 100 : 20
+      const dx = key === 'arrowleft' ? -step : key === 'arrowright' ? step : 0
+      const dy = key === 'arrowup' ? -step : key === 'arrowdown' ? step : 0
+      dispatch({ type: 'move', ids: selection.items, dx, dy })
     }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [deleteSelected, duplicateSelected, rotateSelected, resizeSelected, selection])
+  }
+  useEffect(() => {
+    const down = (e: KeyboardEvent) => keyDown.current(e)
+    const up = (e: KeyboardEvent) => {
+      if (e.key === ' ') setSpace(false)
+    }
+    const blur = () => setSpace(false)
+    window.addEventListener('keydown', down)
+    window.addEventListener('keyup', up)
+    window.addEventListener('blur', blur)
+    return () => {
+      window.removeEventListener('keydown', down)
+      window.removeEventListener('keyup', up)
+      window.removeEventListener('blur', blur)
+    }
+  }, [])
 
   /* ---------- pointer handling ---------- */
 
   const onPointerDown = (e: ReactPointerEvent<SVGSVGElement>) => {
-    if (e.button !== 0) return
+    if (e.button !== 0 && e.button !== 1) return
+    if (e.button === 1) e.preventDefault()
     const hit = (e.target as Element).closest('[data-kind]')
     const kind = hit?.getAttribute('data-kind')
     const w = toWorld(e)
     svgRef.current!.setPointerCapture(e.pointerId)
+
+    // Pan: Pan tool, Space held, or middle mouse. Works over anything.
+    if (e.button === 1 || panMode) {
+      panRef.current = { sx: e.clientX, sy: e.clientY, vx: viewRef.current.x, vy: viewRef.current.y }
+      setPanning(true)
+      return
+    }
 
     if (kind === 'term') {
       setWiring({
@@ -301,27 +426,33 @@ export default function Editor({ armId, loadExample, onToast }: Props) {
     }
     if (armed) {
       const def = getSymbol(armed)!
-      const at = ghost ?? snapPlacement(def, w)
-      const item: Item = { id: uid('i'), symbolId: def.id, x: at.x, y: at.y, rot: 0, label: nextLabel(doc.items, def) }
+      const at = ghost ?? snapPlacement(def, w, 1, armedOrient.rot, armedOrient.mirror)
+      const item: Item = { id: uid('i'), symbolId: def.id, x: at.x, y: at.y, rot: armedOrient.rot, label: nextLabel(doc.items, def) }
+      if (armedOrient.mirror) item.mirror = true
       dispatch({ type: 'add', item })
-      setSelection({ kind: 'items', ids: [item.id] })
+      setSelection({ items: [item.id], wires: [] })
       return
     }
     if (kind === 'item') {
       const id = hit!.getAttribute('data-id')!
-      let ids = selectedItemIds
-      if (e.shiftKey) ids = ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id]
-      else if (!ids.includes(id)) ids = [id]
-      setSelection(ids.length ? { kind: 'items', ids } : null)
-      if (ids.includes(id)) setDrag({ ids, start: w, delta: { x: 0, y: 0 } })
+      let items = selection.items
+      let wireIds = selection.wires
+      if (e.shiftKey) items = toggle(items, id)
+      else if (!items.includes(id)) {
+        items = [id]
+        wireIds = []
+      }
+      setSelection({ items, wires: wireIds })
+      if (items.includes(id)) setDrag({ ids: items, start: w, delta: { x: 0, y: 0 }, clickId: id, shift: e.shiftKey })
       return
     }
     if (kind === 'wire') {
-      setSelection({ kind: 'wire', id: hit!.getAttribute('data-id')! })
+      const id = hit!.getAttribute('data-id')!
+      setSelection(e.shiftKey ? { items: selection.items, wires: toggle(selection.wires, id) } : { items: [], wires: [id] })
       return
     }
-    setSelection(null)
-    panRef.current = { sx: e.clientX, sy: e.clientY, vx: viewRef.current.x, vy: viewRef.current.y }
+    // Empty canvas: start a box selection (a plain click, with no drag, just clears the selection).
+    setMarquee({ from: w, to: w, additive: e.shiftKey, sx: e.clientX, sy: e.clientY, moved: false })
   }
 
   const onPointerMove = (e: ReactPointerEvent<SVGSVGElement>) => {
@@ -329,6 +460,9 @@ export default function Editor({ armId, loadExample, onToast }: Props) {
     if (panRef.current) {
       const p = panRef.current
       setView((v) => ({ ...v, x: p.vx + e.clientX - p.sx, y: p.vy + e.clientY - p.sy }))
+    } else if (marquee) {
+      const moved = marquee.moved || Math.hypot(e.clientX - marquee.sx, e.clientY - marquee.sy) > DRAG_THRESHOLD
+      setMarquee({ ...marquee, to: w, moved })
     } else if (drag) {
       const raw = { x: snap(w.x - drag.start.x), y: snap(w.y - drag.start.y) }
       const moving = terminalPoints(doc.items.filter((i) => drag.ids.includes(i.id)))
@@ -340,8 +474,8 @@ export default function Editor({ armId, loadExample, onToast }: Props) {
       setWiring({ ...wiring, cursor: w, target: nearestTerminal(w, wiring.from) })
     } else if (armed) {
       const def = getSymbol(armed)!
-      const at = snapPlacement(def, w)
-      const probe: Item = { id: 'ghost', symbolId: def.id, x: at.x, y: at.y, rot: 0, label: '' }
+      const at = snapPlacement(def, w, 1, armedOrient.rot, armedOrient.mirror)
+      const probe: Item = { id: 'ghost', symbolId: def.id, x: at.x, y: at.y, rot: armedOrient.rot, label: '', mirror: armedOrient.mirror || undefined }
       const a = alignDelta(terminalPoints([probe]), terminalPoints(doc.items), { x: 0, y: 0 })
       setGuides({ x: a.guideX, y: a.guideY })
       setGhost({ x: at.x + a.delta.x, y: at.y + a.delta.y })
@@ -351,9 +485,27 @@ export default function Editor({ armId, loadExample, onToast }: Props) {
   const onPointerUp = (e: ReactPointerEvent<SVGSVGElement>) => {
     svgRef.current?.releasePointerCapture?.(e.pointerId)
     panRef.current = null
+    setPanning(false)
     setGuides({})
+    if (marquee) {
+      if (marquee.moved) {
+        const box = normBox(marquee.from, marquee.to)
+        const mode = boxMode(marquee.from, marquee.to)
+        const items = itemsInBox(doc.items, box, mode)
+        const wireIds = wiresInBox(wireGeometries(doc), box, mode)
+        setSelection(
+          marquee.additive
+            ? { items: [...new Set([...selection.items, ...items])], wires: [...new Set([...selection.wires, ...wireIds])] }
+            : { items, wires: wireIds },
+        )
+      } else if (!marquee.additive) {
+        setSelection(EMPTY)
+      }
+      setMarquee(null)
+    }
     if (drag) {
       if (drag.delta.x || drag.delta.y) dispatch({ type: 'move', ids: drag.ids, dx: drag.delta.x, dy: drag.delta.y })
+      else if (!drag.shift && drag.ids.length > 1) setSelection({ items: [drag.clickId], wires: [] }) // click on one of many
       setDrag(null)
     }
     if (wiring) {
@@ -401,6 +553,9 @@ export default function Editor({ armId, loadExample, onToast }: Props) {
     if (b) return routeWire(a, [a.dx, a.dy], b, [b.dx, b.dy])
     return routeWire(a, [a.dx, a.dy], { x: snap(wiring.cursor.x), y: snap(wiring.cursor.y) }, null)
   })()
+  const marqueeBox = marquee?.moved ? normBox(marquee.from, marquee.to) : null
+  const selCount = selection.items.length + selection.wires.length
+  const selectedIsEmpty = isEmpty(selection)
 
   return (
     <div className="editor">
@@ -411,7 +566,7 @@ export default function Editor({ armId, loadExample, onToast }: Props) {
         <div className="palette-list">
           {query.trim() ? (
             filtered.length ? (
-              filtered.map((d) => <PaletteButton key={d.id} def={d} armed={armed === d.id} onPick={() => setArmed(armed === d.id ? null : d.id)} />)
+              filtered.map((d) => <PaletteButton key={d.id} def={d} armed={armed === d.id} onPick={() => pick(d.id)} />)
             ) : (
               <p className="muted small pad">No matches.</p>
             )
@@ -420,7 +575,7 @@ export default function Editor({ armId, loadExample, onToast }: Props) {
               <div key={c.id} className="palette-group">
                 <h3>{c.name}</h3>
                 {SYMBOLS.filter((s) => s.category === c.id).map((d) => (
-                  <PaletteButton key={d.id} def={d} armed={armed === d.id} onPick={() => setArmed(armed === d.id ? null : d.id)} />
+                  <PaletteButton key={d.id} def={d} armed={armed === d.id} onPick={() => pick(d.id)} />
                 ))}
               </div>
             ))
@@ -429,13 +584,15 @@ export default function Editor({ armId, loadExample, onToast }: Props) {
       </aside>
 
       <section className="stage">
-        <div className="editor-toolbar" role="toolbar" aria-label="Editor tools">
+        <div className="editor-toolbar" role="toolbar" aria-label="Editor actions">
           <button className="icon-btn" onClick={() => dispatch({ type: 'undo' })} disabled={!hist.past.length} aria-label="Undo" title="Undo (Ctrl+Z)"><UndoIcon /></button>
           <button className="icon-btn" onClick={() => dispatch({ type: 'redo' })} disabled={!hist.future.length} aria-label="Redo" title="Redo (Ctrl+Shift+Z)"><RedoIcon /></button>
           <span className="sep" />
-          <button className="icon-btn" onClick={rotateSelected} disabled={selection?.kind !== 'items'} aria-label="Rotate selected" title="Rotate (R)"><RotateIcon /></button>
-          <button className="icon-btn" onClick={duplicateSelected} disabled={selection?.kind !== 'items'} aria-label="Duplicate selected" title="Duplicate (Ctrl+D)"><DuplicateIcon /></button>
-          <button className="icon-btn" onClick={deleteSelected} disabled={!selection} aria-label="Delete selected" title="Delete (Del)"><TrashIcon /></button>
+          <button className="icon-btn" onClick={rotateSelected} disabled={!hasItems && !armed} aria-label="Rotate" title="Rotate (R)"><RotateIcon /></button>
+          <button className="icon-btn" onClick={() => flipSelected('h')} disabled={!hasItems && !armed} aria-label="Flip left-right" title="Flip left-right (F)"><FlipHIcon /></button>
+          <button className="icon-btn" onClick={() => flipSelected('v')} disabled={!hasItems && !armed} aria-label="Flip top-bottom" title="Flip top-bottom (Shift+F)"><FlipVIcon /></button>
+          <button className="icon-btn" onClick={duplicateSelected} disabled={!hasItems} aria-label="Duplicate selected" title="Duplicate (Ctrl+D)"><DuplicateIcon /></button>
+          <button className="icon-btn" onClick={deleteSelected} disabled={selectedIsEmpty} aria-label="Delete selected" title="Delete (Del)"><TrashIcon /></button>
           <span className="sep" />
           <button className="icon-btn" onClick={() => zoomAt(1 / 1.25)} aria-label="Zoom out" title="Zoom out"><MinusIcon /></button>
           <span className="zoom mono" aria-live="polite">{Math.round(view.k * 100)}%</span>
@@ -447,143 +604,167 @@ export default function Editor({ armId, loadExample, onToast }: Props) {
             <span>Sheet</span>
           </label>
           {conflictIds.length > 0 && (
-            <button className="chip-btn" onClick={() => setSelection({ kind: 'items', ids: conflictIds })} title="Select the parts that are outside the frame or under the title block">
+            <button className="chip-btn" onClick={() => setSelection({ items: conflictIds, wires: [] })} title="Select the parts that are outside the frame or under the title block">
               <WarnIcon /> {conflictIds.length} off sheet
             </button>
           )}
           <span className="grow" />
-          <button className="btn small" onClick={() => { const ex = dolStarterExample(); dispatch({ type: 'load', doc: ex }); setSelection(null); requestAnimationFrame(() => fit(ex)) }} aria-label="Load example circuit" title="Load the motor starter example">Example</button>
-          <button className="btn small" onClick={() => { dispatch({ type: 'load', doc: { items: [], wires: [], sheet: doc.sheet } }); setSelection(null) }} disabled={!doc.items.length}>Clear</button>
+          <button className="btn small" onClick={() => { const ex = dolStarterExample(); dispatch({ type: 'load', doc: ex }); setSelection(EMPTY); requestAnimationFrame(() => fit(ex)) }} aria-label="Load example circuit" title="Load the motor starter example">Example</button>
+          <button className="btn small" onClick={() => { dispatch({ type: 'load', doc: { items: [], wires: [], sheet: doc.sheet } }); setSelection(EMPTY) }} disabled={!doc.items.length}>Clear</button>
           <button className="icon-btn" onClick={print} aria-label="Print or save as PDF" title="Print / save as PDF"><PrintIcon /></button>
           <button className="btn small" onClick={exportSvg} aria-label="Export SVG" title="Export as SVG">SVG</button>
           <button className="btn small primary" onClick={exportPng} aria-label="Export PNG" title="Export as PNG">PNG</button>
         </div>
 
-        <div className="canvas-wrap">
-          <svg
-            ref={svgRef}
-            className={`canvas${armed ? ' is-armed' : ''}${wiring ? ' is-wiring' : ''}`}
-            onPointerDown={onPointerDown}
-            onPointerMove={onPointerMove}
-            onPointerUp={onPointerUp}
-            onPointerLeave={() => { setGhost(null); setGuides({}) }}
-            aria-label="Schematic canvas"
-            role="application"
-          >
-            <defs>
-              <pattern id="grid-dots" width="20" height="20" patternUnits="userSpaceOnUse" patternTransform={`translate(${view.x} ${view.y}) scale(${view.k})`}>
-                <circle cx="0" cy="0" r="1.1" className="grid-dot" />
-              </pattern>
-              <pattern id="grid-dots-world" width="20" height="20" patternUnits="userSpaceOnUse">
-                <circle cx="0" cy="0" r="1.1" className="grid-dot" />
-              </pattern>
-            </defs>
-            <rect width="100%" height="100%" fill="url(#grid-dots)" />
+        <div className="stage-body">
+          <nav className="tool-rail" aria-label="Tools">
+            <button className="icon-btn" aria-pressed={tool === 'select'} onClick={() => setTool('select')} aria-label="Select tool" title="Select (V). Drag empty space for a selection box"><CursorIcon /></button>
+            <button className="icon-btn" aria-pressed={tool === 'pan'} onClick={() => setTool('pan')} aria-label="Pan tool" title="Pan (H). Or hold Space, or use the middle mouse button"><HandIcon /></button>
+          </nav>
 
-            <g transform={`translate(${view.x} ${view.y}) scale(${view.k})`}>
-              {sheetArt && (
-                <g className="sheet" data-testid="sheet" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-                  <rect className="paper" x={0} y={0} width={PAPER[doc.sheet.size].w} height={PAPER[doc.sheet.size].h} stroke="none" />
-                  <rect x={0} y={0} width={PAPER[doc.sheet.size].w} height={PAPER[doc.sheet.size].h} fill="url(#grid-dots-world)" stroke="none" pointerEvents="none" />
-                  <Prims prims={sheetArt} />
-                </g>
-              )}
-              <g className="wires">
-                {wires.map((w) => (
-                  <g key={w.id}>
-                    <path className={`wire${selection?.kind === 'wire' && selection.id === w.id ? ' selected' : ''}`} d={pointsToPath(w.points)} />
-                    <path className="wire-hit" data-kind="wire" data-id={w.id} d={pointsToPath(w.points)} />
+          <div className="canvas-wrap">
+            <svg
+              ref={svgRef}
+              className={`canvas${armed ? ' is-armed' : ''}${wiring ? ' is-wiring' : ''}${panMode ? ' is-pan' : ''}${panning ? ' is-panning' : ''}`}
+              onPointerDown={onPointerDown}
+              onPointerMove={onPointerMove}
+              onPointerUp={onPointerUp}
+              onPointerLeave={() => { setGhost(null); setGuides({}) }}
+              onAuxClick={(e) => e.preventDefault()}
+              aria-label="Schematic canvas"
+              role="application"
+            >
+              <defs>
+                <pattern id="grid-dots" width="20" height="20" patternUnits="userSpaceOnUse" patternTransform={`translate(${view.x} ${view.y}) scale(${view.k})`}>
+                  <circle cx="0" cy="0" r="1.1" className="grid-dot" />
+                </pattern>
+                <pattern id="grid-dots-world" width="20" height="20" patternUnits="userSpaceOnUse">
+                  <circle cx="0" cy="0" r="1.1" className="grid-dot" />
+                </pattern>
+              </defs>
+              <rect width="100%" height="100%" fill="url(#grid-dots)" />
+
+              <g transform={`translate(${view.x} ${view.y}) scale(${view.k})`}>
+                {sheetArt && (
+                  <g className="sheet" data-testid="sheet" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                    <rect className="paper" x={0} y={0} width={PAPER[doc.sheet.size].w} height={PAPER[doc.sheet.size].h} stroke="none" />
+                    <rect x={0} y={0} width={PAPER[doc.sheet.size].w} height={PAPER[doc.sheet.size].h} fill="url(#grid-dots-world)" stroke="none" pointerEvents="none" />
+                    <Prims prims={sheetArt} />
                   </g>
-                ))}
-              </g>
-
-              {guides.x !== undefined && <line className="guide" x1={guides.x} x2={guides.x} y1={-4000} y2={6000} />}
-              {guides.y !== undefined && <line className="guide" y1={guides.y} y2={guides.y} x1={-4000} x2={6000} />}
-
-              {shown.items
-                .filter((it) => conflictIds.includes(it.id))
-                .map((it) => {
-                  const b = itemBounds(it, defOf(it))
-                  return <rect key={it.id} className="conflict-box" x={b.x - 6} y={b.y - 6} width={b.w + 12} height={b.h + 12} rx="6" />
-                })}
-
-              {selBounds.map(({ id, b }) => (
-                <rect key={id} className="sel-box" x={b.x - 6} y={b.y - 6} width={b.w + 12} height={b.h + 12} rx="6" />
-              ))}
-
-              {shown.items.map((it) => {
-                const def = defOf(it)
-                const pv = pivotOf(def)
-                const k = itemScale(it)
-                const lp = labelPos(it)
-                return (
-                  <g key={it.id}>
-                    <g
-                      className="item"
-                      data-kind="item"
-                      data-id={it.id}
-                      transform={`translate(${it.x} ${it.y}) rotate(${it.rot}) translate(${-pv.x * k} ${-pv.y * k})`}
-                    >
-                      <rect className="item-hit" x={-4} y={-4} width={def.width * k + 8} height={def.height * k + 8} />
-                      <GlyphBody def={def} scale={k} />
+                )}
+                <g className="wires">
+                  {wires.map((w) => (
+                    <g key={w.id}>
+                      <path className={`wire${selection.wires.includes(w.id) ? ' selected' : ''}`} d={pointsToPath(w.points)} />
+                      <path className="wire-hit" data-kind="wire" data-id={w.id} d={pointsToPath(w.points)} />
                     </g>
-                    {it.label && (
-                      <text className="item-label" x={lp.x} y={lp.y}>
-                        {it.label}
-                      </text>
-                    )}
-                  </g>
-                )
-              })}
+                  ))}
+                </g>
 
-              {dots.map((p, i) => (
-                <circle key={i} className="junction" cx={p.x} cy={p.y} r={4} />
-              ))}
+                {guides.x !== undefined && <line className="guide" x1={guides.x} x2={guides.x} y1={-4000} y2={6000} />}
+                {guides.y !== undefined && <line className="guide" y1={guides.y} y2={guides.y} x1={-4000} x2={6000} />}
 
-              {shown.items.flatMap((it) => {
-                const def = defOf(it)
-                return def.terminals.map((t) => {
-                  const p = terminalWorld(it, def, t.id)!
-                  const isTarget = wiring?.target?.item === it.id && wiring.target.term === t.id
-                  const lx = p.x + p.dx * 12
-                  const ly = p.y + p.dy * 12 + (p.dy === 0 ? 4 : p.dy > 0 ? 8 : 0)
+                {shown.items
+                  .filter((it) => conflictIds.includes(it.id))
+                  .map((it) => {
+                    const b = itemBounds(it, defOf(it))
+                    return <rect key={it.id} className="conflict-box" x={b.x - 6} y={b.y - 6} width={b.w + 12} height={b.h + 12} rx="6" />
+                  })}
+
+                {selBounds.map(({ id, b }) => (
+                  <rect key={id} className="sel-box" x={b.x - 6} y={b.y - 6} width={b.w + 12} height={b.h + 12} rx="6" />
+                ))}
+
+                {shown.items.map((it) => {
+                  const def = defOf(it)
+                  const pv = pivotOf(def)
+                  const k = itemScale(it)
+                  const lp = labelPos(it)
                   return (
-                    <g key={`${it.id}:${t.id}`} className={`term-g tg-${t.role}${isTarget ? ' is-target' : ''}`}>
-                      <circle className="t-dot" cx={p.x} cy={p.y} r={3.5} />
-                      <circle className="t-hit" data-kind="term" data-item={it.id} data-term={t.id} cx={p.x} cy={p.y} r={10} />
-                      <text className="t-label" x={lx} y={ly} textAnchor={p.dx > 0 ? 'start' : p.dx < 0 ? 'end' : 'middle'}>
-                        {t.label}
-                      </text>
+                    <g key={it.id}>
+                      <g
+                        className="item"
+                        data-kind="item"
+                        data-id={it.id}
+                        transform={`translate(${it.x} ${it.y}) rotate(${it.rot}) translate(${-pv.x * k} ${-pv.y * k})`}
+                      >
+                        <rect className="item-hit" x={-4} y={-4} width={def.width * k + 8} height={def.height * k + 8} />
+                        <GlyphBody def={def} scale={k} mirror={itemMirror(it)} />
+                      </g>
+                      {it.label && (
+                        <text className="item-label" x={lp.x} y={lp.y}>
+                          {it.label}
+                        </text>
+                      )}
                     </g>
                   )
-                })
-              })}
+                })}
 
-              {draftPoints && <path className="wire draft" d={pointsToPath(draftPoints)} />}
+                {dots.map((p, i) => (
+                  <circle key={i} className="junction" cx={p.x} cy={p.y} r={4} />
+                ))}
 
-              {armedDef && ghost && (
-                <g
-                  className="ghost"
-                  transform={`translate(${ghost.x} ${ghost.y}) translate(${-pivotOf(armedDef).x} ${-pivotOf(armedDef).y})`}
-                  pointerEvents="none"
-                >
-                  <GlyphBody def={armedDef} />
-                </g>
-              )}
-            </g>
-          </svg>
+                {shown.items.flatMap((it) => {
+                  const def = defOf(it)
+                  return def.terminals.map((t) => {
+                    const p = terminalWorld(it, def, t.id)!
+                    const isTarget = wiring?.target?.item === it.id && wiring.target.term === t.id
+                    const lx = p.x + p.dx * 12
+                    const ly = p.y + p.dy * 12 + (p.dy === 0 ? 4 : p.dy > 0 ? 8 : 0)
+                    return (
+                      <g key={`${it.id}:${t.id}`} className={`term-g tg-${t.role}${isTarget ? ' is-target' : ''}`}>
+                        <circle className="t-dot" cx={p.x} cy={p.y} r={3.5} />
+                        <circle className="t-hit" data-kind="term" data-item={it.id} data-term={t.id} cx={p.x} cy={p.y} r={10} />
+                        <text className="t-label" x={lx} y={ly} textAnchor={p.dx > 0 ? 'start' : p.dx < 0 ? 'end' : 'middle'}>
+                          {t.label}
+                        </text>
+                      </g>
+                    )
+                  })
+                })}
 
-          {!doc.items.length && !armed && (
-            <div className="canvas-empty">
-              <p><strong>Empty canvas</strong></p>
-              <p className="muted">Pick a symbol on the left, then click here to place it. Drag from one terminal dot to another to draw a wire.</p>
-            </div>
-          )}
-          {armedDef && (
-            <div className="canvas-hint" role="status">
-              Placing <strong>{armedDef.name}</strong> — click the canvas to place, <kbd>Esc</kbd> to stop
-            </div>
-          )}
+                {draftPoints && <path className="wire draft" d={pointsToPath(draftPoints)} />}
+
+                {armedDef && ghost && (
+                  <g
+                    className="ghost"
+                    transform={`translate(${ghost.x} ${ghost.y}) rotate(${armedOrient.rot}) translate(${-pivotOf(armedDef).x} ${-pivotOf(armedDef).y})`}
+                    pointerEvents="none"
+                  >
+                    <GlyphBody def={armedDef} mirror={armedOrient.mirror} />
+                  </g>
+                )}
+
+                {marqueeBox && marquee && (
+                  <rect
+                    className={`marquee ${boxMode(marquee.from, marquee.to)}`}
+                    x={marqueeBox.x}
+                    y={marqueeBox.y}
+                    width={marqueeBox.w}
+                    height={marqueeBox.h}
+                    pointerEvents="none"
+                  />
+                )}
+              </g>
+            </svg>
+
+            {!doc.items.length && !armed && (
+              <div className="canvas-empty">
+                <p><strong>Empty canvas</strong></p>
+                <p className="muted">Pick a symbol on the left, then click here to place it. Drag from one terminal dot to another to draw a wire.</p>
+              </div>
+            )}
+            {armedDef && (
+              <div className="canvas-hint" role="status">
+                Placing <strong>{armedDef.name}</strong>. Click to place, <kbd>R</kbd> rotate, <kbd>F</kbd> flip, <kbd>Esc</kbd> stop
+              </div>
+            )}
+            {!armedDef && selCount > 1 && (
+              <div className="canvas-hint" role="status">
+                {selCount} selected
+              </div>
+            )}
+          </div>
         </div>
       </section>
 
@@ -591,23 +772,31 @@ export default function Editor({ armId, loadExample, onToast }: Props) {
         <Inspector
           doc={doc}
           selection={selection}
-          onLabel={(id, label) => dispatch({ type: 'label', id, label })}
-          onSheet={(patch) => dispatch({ type: 'sheet', patch })}
-          onResize={resizeSelected}
-          onSetScale={(scale) => selection?.kind === 'items' && dispatch({ type: 'set-scale', ids: selection.ids, scale })}
-          onFitSheet={fitToSheet}
-          onShrink={shrinkAndFit}
-          onScaleAll={scaleAll}
           fitPlan={fitPlan}
           shrinkPlan={shrinkPlan}
           conflictCount={conflictIds.length}
+          onLabel={(id, label) => dispatch({ type: 'label', id, label })}
+          onSheet={(patch) => dispatch({ type: 'sheet', patch })}
+          onResize={resizeSelected}
+          onSetScale={(scale) => hasItems && dispatch({ type: 'set-scale', ids: selection.items, scale })}
           onRotate={rotateSelected}
+          onFlip={flipSelected}
           onDuplicate={duplicateSelected}
           onDelete={deleteSelected}
+          onAlign={align}
+          onDistribute={distribute}
+          onFitSheet={fitToSheet}
+          onShrink={shrinkAndFit}
+          onScaleAll={scaleAll}
         />
       </aside>
     </div>
   )
+
+  function pick(id: string) {
+    setArmed((cur) => (cur === id ? null : id))
+    setArmedOrient({ rot: 0, mirror: false })
+  }
 }
 
 function PaletteButton({ def, armed, onPick }: { def: SymbolDef; armed: boolean; onPick: () => void }) {
@@ -616,233 +805,5 @@ function PaletteButton({ def, armed, onPick }: { def: SymbolDef; armed: boolean;
       <SymbolSvg def={def} className="mini-glyph" />
       <span>{def.name}</span>
     </button>
-  )
-}
-
-function Inspector({
-  doc, selection, onLabel, onSheet, onResize, onSetScale, onFitSheet, onShrink, onScaleAll, fitPlan, shrinkPlan, conflictCount, onRotate, onDuplicate, onDelete,
-}: {
-  doc: Doc
-  selection: Selection
-  onResize: (dir: 1 | -1) => void
-  onSetScale: (scale: number) => void
-  onFitSheet: () => void
-  onShrink: () => void
-  onScaleAll: (factor: number) => void
-  fitPlan: FitPlan
-  shrinkPlan: { factor: number } | null
-  conflictCount: number
-  onLabel: (id: string, label: string) => void
-  onSheet: (patch: { enabled?: boolean; size?: PaperSize; fields?: Partial<TitleFields> }) => void
-  onRotate: () => void
-  onDuplicate: () => void
-  onDelete: () => void
-}) {
-  if (selection?.kind === 'wire') {
-    const w = doc.wires.find((x) => x.id === selection.id)
-    const name = (e: Endpoint) => `${doc.items.find((i) => i.id === e.item)?.label || 'part'}·${e.term}`
-    return (
-      <div className="inspector-body">
-        <p className="eyebrow">Wire</p>
-        {w && <p className="mono">{name(w.a)} → {name(w.b)}</p>}
-        <button className="btn danger" onClick={onDelete}><TrashIcon /> Delete wire</button>
-      </div>
-    )
-  }
-
-  if (selection?.kind === 'items') {
-    const items = doc.items.filter((i) => selection.ids.includes(i.id))
-    if (items.length === 1) {
-      const item = items[0]
-      const def = defOf(item)
-      const conns = doc.wires.flatMap((w) => {
-        const other = (e: Endpoint, o: Endpoint) => (e.item === item.id ? [{ term: e.term, to: `${doc.items.find((i) => i.id === o.item)?.label || 'part'}·${o.term}` }] : [])
-        return [...other(w.a, w.b), ...other(w.b, w.a)]
-      })
-      return (
-        <div className="inspector-body">
-          <p className="eyebrow">Selected</p>
-          <h2>{def.name}</h2>
-          <LabelField key={item.id + item.label} value={item.label} onCommit={(v) => onLabel(item.id, v)} />
-          <SizeControl scales={items.map(itemScale)} onStep={onResize} onSet={onSetScale} />
-          <div className="row">
-            <button className="btn small" onClick={onRotate}><RotateIcon /> Rotate</button>
-            <button className="btn small" onClick={onDuplicate}><DuplicateIcon /> Duplicate</button>
-            <button className="btn small danger" onClick={onDelete}><TrashIcon /> Delete</button>
-          </div>
-          <h3>Terminals</h3>
-          <ul className="term-list">
-            {def.terminals.map((t) => {
-              const c = conns.filter((x) => x.term === t.id)
-              return (
-                <li key={t.id}>
-                  <span className={`dot dot-${t.role}`} aria-hidden="true" />
-                  <span className="mono">{t.label}</span>
-                  <span className="muted small">{c.length ? c.map((x) => x.to).join(', ') : t.name}</span>
-                </li>
-              )
-            })}
-          </ul>
-        </div>
-      )
-    }
-    return (
-      <div className="inspector-body">
-        <p className="eyebrow">Selected</p>
-        <h2>{items.length} parts</h2>
-        <SizeControl scales={items.map(itemScale)} onStep={onResize} onSet={onSetScale} />
-        <div className="row">
-          <button className="btn small" onClick={onRotate}><RotateIcon /> Rotate</button>
-          <button className="btn small" onClick={onDuplicate}><DuplicateIcon /> Duplicate</button>
-          <button className="btn small danger" onClick={onDelete}><TrashIcon /> Delete</button>
-        </div>
-      </div>
-    )
-  }
-
-  return (
-    <div className="inspector-body">
-      <p className="eyebrow">Editor</p>
-      <h2>{doc.items.length} parts · {doc.wires.length} wires</h2>
-      <p className="muted small">Your drawing is saved in this browser automatically.</p>
-      <DrawingSize doc={doc} onScaleAll={onScaleAll} />
-      <SheetForm sheet={doc.sheet} conflictCount={conflictCount} plan={fitPlan} shrink={shrinkPlan} onShrink={onShrink} onFit={onFitSheet} onChange={onSheet} />
-      <h3>Shortcuts</h3>
-      <dl className="shortcuts">
-        <dt><kbd>R</kbd></dt><dd>Rotate selected</dd>
-        <dt><kbd>Del</kbd></dt><dd>Delete selected</dd>
-        <dt><kbd>[</kbd> <kbd>]</kbd></dt><dd>Smaller / larger part</dd>
-        <dt><kbd>Ctrl</kbd>+<kbd>D</kbd></dt><dd>Duplicate</dd>
-        <dt><kbd>Ctrl</kbd>+<kbd>Z</kbd></dt><dd>Undo / <kbd>Shift</kbd> redo</dd>
-        <dt><kbd>←↑↓→</kbd></dt><dd>Nudge (Shift = 5 cells)</dd>
-        <dt><kbd>Shift</kbd>+click</dt><dd>Multi-select</dd>
-        <dt><kbd>Esc</kbd></dt><dd>Cancel / deselect</dd>
-        <dt>Scroll</dt><dd>Zoom; drag background to pan</dd>
-      </dl>
-    </div>
-  )
-}
-
-function LabelField({ value, onCommit }: { value: string; onCommit: (v: string) => void }) {
-  return <CommitField label="Label" value={value} onCommit={onCommit} placeholder="e.g. Q1" maxLength={16} mono />
-}
-
-/** Text input that commits on blur or Enter, so typing does not flood the undo history. */
-function CommitField({
-  label, value, onCommit, placeholder, maxLength, mono = false,
-}: {
-  label: string
-  value: string
-  onCommit: (v: string) => void
-  placeholder?: string
-  maxLength: number
-  mono?: boolean
-}) {
-  const [v, setV] = useState(value)
-  useEffect(() => setV(value), [value]) // follow undo/redo and external changes
-  const commit = () => v.trim() !== value && onCommit(v.trim())
-  return (
-    <label className={`field${mono ? ' mono-field' : ''}`}>
-      <span>{label}</span>
-      <input
-        value={v}
-        maxLength={maxLength}
-        onChange={(e) => setV(e.target.value)}
-        onBlur={commit}
-        onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
-        placeholder={placeholder}
-      />
-    </label>
-  )
-}
-
-/** Stepper for part size. Shows the shared size, or "mixed" when the selection differs. */
-function SizeControl({ scales, onStep, onSet }: { scales: number[]; onStep: (dir: 1 | -1) => void; onSet: (scale: number) => void }) {
-  const same = scales.every((v) => v === scales[0])
-  const current = scales[0] ?? 1
-  const pct = same ? `${Math.round(current * 100)}%` : 'Mixed'
-  return (
-    <div className="field size-control">
-      <span>Size</span>
-      <div className="stepper">
-        <button className="icon-btn" onClick={() => onStep(-1)} disabled={same && current <= SCALES[0]} aria-label="Make smaller" title="Smaller ( [ )"><MinusIcon /></button>
-        <span className="mono" aria-live="polite">{pct}</span>
-        <button className="icon-btn" onClick={() => onStep(1)} disabled={same && current >= SCALES[SCALES.length - 1]} aria-label="Make larger" title="Larger ( ] )"><PlusIcon /></button>
-        <button className="btn small" onClick={() => onSet(1)} disabled={same && current === 1}>Reset</button>
-      </div>
-    </div>
-  )
-}
-
-const DRAWING_FACTORS = [0.5, 0.75, 1.25, 1.5, 2]
-
-/** Scale every part and the spacing between them together. Buttons that would leave the preset sizes are disabled. */
-function DrawingSize({ doc, onScaleAll }: { doc: Doc; onScaleAll: (factor: number) => void }) {
-  if (!doc.items.length) return null
-  return (
-    <fieldset className="sheet-form">
-      <legend>Whole drawing</legend>
-      <div className="factor-row" role="group" aria-label="Scale the whole drawing">
-        {DRAWING_FACTORS.map((f) => (
-          <button key={f} className="btn small" disabled={!scaleDrawing(doc, f)} onClick={() => onScaleAll(f)} title={`Scale every part and the spacing to ${Math.round(f * 100)}%`}>
-            {Math.round(f * 100)}%
-          </button>
-        ))}
-      </div>
-      <p className="muted small">Scales all parts and their spacing together, keeping wires aligned. Use it to fit a big drawing on a sheet.</p>
-    </fieldset>
-  )
-}
-
-const PAIRS: (keyof TitleFields)[][] = [['organization'], ['project'], ['title'], ['details'], ['drawnBy', 'drawingNo'], ['date', 'scale'], ['revision', 'sheet']]
-
-function SheetForm({ sheet, conflictCount, plan, shrink, onShrink, onFit, onChange }: { sheet: SheetConfig; conflictCount: number; plan: FitPlan; shrink: { factor: number } | null; onShrink: () => void; onFit: () => void; onChange: (patch: { enabled?: boolean; size?: PaperSize; fields?: Partial<TitleFields> }) => void }) {
-  return (
-    <fieldset className="sheet-form">
-      <legend>Drawing sheet</legend>
-      <div className="row between">
-        <label className="switch">
-          <input type="checkbox" checked={sheet.enabled} onChange={(e) => onChange({ enabled: e.target.checked })} />
-          <span>Show sheet</span>
-        </label>
-        <label className="size-pick">
-          <span className="sr-only">Paper size</span>
-          <select value={sheet.size} onChange={(e) => onChange({ size: e.target.value as PaperSize })} aria-label="Paper size">
-            {PAPER_ORDER.map((s) => (
-              <option key={s} value={s}>{s} landscape</option>
-            ))}
-          </select>
-        </label>
-      </div>
-      {sheet.enabled && conflictCount > 0 && (
-        <div className="warn small" role="status">
-          <p>{conflictCount} {conflictCount === 1 ? 'part sits' : 'parts sit'} outside the frame or under the title block.</p>
-          {plan.ok ? (
-            <button className="btn small" onClick={onFit}>
-              {plan.size === sheet.size ? 'Move onto the sheet' : `Move onto ${plan.size}`}
-            </button>
-          ) : (
-            <>
-              <p>The drawing is too big for any sheet up to A1.</p>
-              {shrink ? (
-                <button className="btn small" onClick={onShrink}>Shrink to {Math.round(shrink.factor * 100)}% and fit</button>
-              ) : (
-                <p>Even shrunk it will not fit, so it needs splitting across sheets.</p>
-              )}
-            </>
-          )}
-        </div>
-      )}
-      {PAIRS.map((keys) => (
-        <div key={keys.join()} className={keys.length > 1 ? 'pair' : undefined}>
-          {keys.map((k) => {
-            const def = FIELD_DEFS.find((d) => d.key === k)!
-            return (
-              <CommitField key={k} label={def.label} value={sheet.fields[k]} placeholder={def.placeholder} maxLength={def.maxLength} onCommit={(v) => onChange({ fields: { [k]: v } })} />
-            )
-          })}
-        </div>
-      ))}
-    </fieldset>
   )
 }

@@ -6,7 +6,7 @@
 
 A searchable library of IEC-style electrical schematic symbols, plus a small in-browser schematic editor that puts your circuit on a proper drawing sheet with a title block.
 
-**Live demo:** [https://levii17.github.io/muriel-schematics/](https://levii17.github.io/muriel-schematics/) &nbsp;·&nbsp; **Stack:** React 19, TypeScript (strict), Vite, Vitest. React is the only runtime dependency.
+**Live demo:**  [https://levii17.github.io/muriel-schematics/](https://levii17.github.io/muriel-schematics/) &nbsp;·&nbsp; **Stack:** React 19, TypeScript (strict), Vite, Vitest. React is the only runtime dependency.
 
 | Library | Editor with drawing sheet | Dark theme |
 | --- | --- | --- |
@@ -30,7 +30,12 @@ Resizing in practice: a 125% breaker and a 50% variable resistor whose leads lan
 **Editor**
 - Click a symbol in the palette, click the canvas to place it; everything snaps to a 20 px grid.
 - Drag from one terminal to another to draw an orthogonal wire. Wires re-route as parts move.
-- Rotate, duplicate, multi-select, nudge, delete, undo/redo. Parts auto-number (`Q1`, `K1`, `M1`…).
+- **Selecting:** drag an empty area for a selection box (left to right selects parts fully inside, right to left selects anything the box touches, like CAD). Shift adds or removes, `Ctrl+A` selects everything. Wires can be selected too, alone or together with parts.
+- **Tools:** a rail on the left has Select (`V`) and Pan (`H`). You can also pan by holding `Space` while dragging, or with the middle mouse button.
+- **Rotate and reflect** (`R`, `F` left-right, `Shift+F` top-bottom): one part turns about its own centre, several turn as a group so the wires between them keep their shape. Reflection is real geometry rather than a mirrored picture, so text such as "kWh" stays readable and the timer-contact arc flips correctly. Press `R` or `F` while placing a part to orient it before you drop it.
+- **Copy, cut, paste, duplicate** (`Ctrl+C`, `X`, `V`, `D`): pasted parts are renumbered (Q1, Q2, …) and the wires between the copied parts come with them. Custom labels are kept.
+- **Align and distribute:** with two or more parts selected, align edges or centres, or (three or more) space them with equal gaps.
+- Nudge, delete, undo/redo. Parts auto-number (`Q1`, `K1`, `M1`…).
 - **Resize parts** (`[` and `]`, or the Size control in the inspector): 50%, 75%, 100%, 125%, 150%, 200%, 250%, 300%. A part grows or shrinks about its first terminal, so its wire stays attached; line weight stays constant. Use it when symbols are out of proportion, for example a resistor bridging two breaker poles.
 - **Magnetic alignment:** when you drag or place a part, its terminals snap onto the terminals of other parts within half a grid cell (a dashed guide shows the match). That is how differently sized parts line up exactly, for example a 50% resistor between the poles of a 125% breaker.
 - **Whole-drawing scale:** 50% to 200% scales every part and the spacing between them together, keeping wires aligned.
@@ -78,12 +83,13 @@ src/
   data/       symbol definitions, primitives (pole(), link(), …), categories
   lib/        search, SVG serialiser + PNG export, print, hooks (hash router, theme, toast)
   components/ library UI: cards, details drawer, glyph renderer, header
-  editor/     model & geometry, history reducer, wire routing, drawing sheet + title block,
-              persistence, export, example circuit, UI
+  editor/     model & geometry, history reducer, wire routing, transform (rotate/flip), selection,
+              clipboard, align/distribute, drawing sheet + title block, persistence, export,
+              example circuit, Editor and Inspector UI
 public/       favicons, web manifest, brand assets
 ```
 
-`npm test` runs 84 tests covering symbol data integrity, search ranking, terminal positions for every symbol at every size and rotation, symbol scaling (including SVG arcs), orthogonal wire routing, magnetic alignment, the undo/redo reducer, storage validation, sheet and title-block geometry, fit-to-sheet planning, and SVG export.
+`npm test` runs 121 tests covering symbol data integrity, search ranking, terminal positions for every symbol at every size, rotation and reflection, exact group rotate/flip geometry, box selection, clipboard, align and distribute, symbol scaling (including SVG arcs), orthogonal wire routing, magnetic alignment, the undo/redo reducer, storage validation, sheet and title-block geometry, fit-to-sheet planning, and SVG export.
 
 ## Run it
 

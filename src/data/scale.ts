@@ -76,3 +76,56 @@ export function scaleBody(def: SymbolDef, s: number): Prim[] {
   }
   return out
 }
+
+/**
+ * Mirror an absolute M/L/A/Z path about a vertical line: x becomes `axis2 - x` (axis2 is twice the axis x).
+ * A reflection reverses the direction of travel, so arc sweep flags flip and the ellipse rotation negates.
+ */
+export function mirrorPath(d: string, axis2: number): string {
+  const tokens = d.match(/[A-Za-z]|-?\d*\.?\d+/g) ?? []
+  const parts: string[] = []
+  let i = 0
+  const nextNum = () => Number(tokens[i++])
+  while (i < tokens.length) {
+    const cmd = tokens[i++]
+    if (!isCmd(cmd)) throw new Error(`Malformed path "${d}"`)
+    const args: string[] = []
+    if (cmd === 'M' || cmd === 'L') {
+      while (i < tokens.length && !isCmd(tokens[i])) args.push(num(axis2 - nextNum()), num(nextNum()))
+    } else if (cmd === 'A') {
+      while (i < tokens.length && !isCmd(tokens[i])) {
+        const rx = nextNum()
+        const ry = nextNum()
+        const rot = nextNum()
+        const large = nextNum()
+        const sweep = nextNum()
+        const x = nextNum()
+        const y = nextNum()
+        args.push(num(rx), num(ry), num(rot === 0 ? 0 : -rot), num(large), num(1 - sweep), num(axis2 - x), num(y))
+      }
+    } else if (cmd !== 'Z') {
+      throw new Error(`Unsupported path command ${cmd} in "${d}"`)
+    }
+    parts.push(args.length ? `${cmd}${args.join(' ')}` : cmd)
+  }
+  return parts.join(' ')
+}
+
+/** Mirror one primitive about the vertical line x = axis2 / 2. Text keeps reading left to right: only its anchor point moves. */
+export function mirrorPrim(p: Prim, axis2: number): Prim {
+  const m = (x: number) => axis2 - x
+  switch (p.k) {
+    case 'line':
+      return { ...p, x1: m(p.x1), x2: m(p.x2) }
+    case 'rect':
+      return { ...p, x: m(p.x + p.w) }
+    case 'circle':
+      return { ...p, cx: m(p.cx) }
+    case 'path':
+      return { ...p, d: mirrorPath(p.d, axis2) }
+    case 'poly':
+      return { ...p, pts: p.pts.map(([x, y]) => [m(x), y] as [number, number]) }
+    case 'text':
+      return { ...p, x: m(p.x), anchor: p.anchor === 'start' ? 'end' : p.anchor === 'end' ? 'start' : 'middle' }
+  }
+}

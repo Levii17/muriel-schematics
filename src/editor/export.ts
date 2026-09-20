@@ -1,9 +1,8 @@
 import { getSymbol } from '../data'
-import { scaleBody } from '../data/scale'
 import { bodyToSvg, escapeXml, styledGroup } from '../lib/svg'
 import type { Doc, Pt } from './model'
 import { PAPER, sheetPrims } from './sheet'
-import { defOf, itemBounds, itemScale, pivotOf, pointsToPath, terminalWorld, routeWire } from './model'
+import { defOf, itemBounds, itemMirror, itemScale, pivotOf, pointsToPath, symbolBody, terminalWorld, routeWire } from './model'
 
 export interface WireGeometry {
   id: string
@@ -94,7 +93,7 @@ export function diagramToSvg(doc: Doc, opts: { ink?: string; background?: string
       if (!def) return ''
       const pv = pivotOf(def)
       const k = itemScale(item)
-      return `<g transform="translate(${item.x} ${item.y}) rotate(${item.rot}) translate(${-pv.x * k} ${-pv.y * k})">${bodyToSvg(scaleBody(def, k))}</g>`
+      return `<g transform="translate(${item.x} ${item.y}) rotate(${item.rot}) translate(${-pv.x * k} ${-pv.y * k})">${bodyToSvg(symbolBody(def, k, itemMirror(item)))}</g>`
     })
     .join('')
   const labels = doc.items

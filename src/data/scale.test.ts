@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { SYMBOLS } from './index'
-import { SCALES, scaleBody, scalePath, scalePrim } from './scale'
+import { SCALES, mirrorPath, mirrorPrim, scaleBody, scalePath, scalePrim } from './scale'
 
 describe('scalePath', () => {
   it('scales end points and radii but not arc flags', () => {
@@ -45,5 +45,42 @@ describe('scaleBody', () => {
   it('is memoised', () => {
     const def = SYMBOLS[0]
     expect(scaleBody(def, 1.5)).toBe(scaleBody(def, 1.5))
+  })
+})
+
+describe('mirroring', () => {
+  it('flips arcs: sweep reverses and x reflects', () => {
+    expect(mirrorPath('M44,26 A14,14 0 0 1 44,54', 100)).toBe('M56 26 A14 14 0 0 0 56 54')
+  })
+
+  it('is its own inverse for every symbol and size', () => {
+    // Round numbers so floating-point noise (30.6 vs 30.600000000000001) does not matter.
+    const fix = (v: unknown) => JSON.stringify(v, (_k, x) => (typeof x === 'number' ? Math.round(x * 1e6) / 1e6 : x))
+    for (const def of SYMBOLS) {
+      for (const s of SCALES) {
+        const body = scaleBody(def, s)
+        const axis2 = 2 * 60 * s
+        const twice = body.map((p) => mirrorPrim(mirrorPrim(p, axis2), axis2))
+        // Paths come back re-formatted, so compare them against a path passed through the same formatter.
+        const expected = body.map((p) => (p.k === 'path' ? { ...p, d: mirrorPath(mirrorPath(p.d, 0), 0) } : p))
+        expect(fix(twice), `${def.id}@${s}`).toBe(fix(expected))
+      }
+    }
+  })
+
+  it('keeps text readable: only the anchor point and side move', () => {
+    const t = mirrorPrim({ k: 'text', x: 30, y: 10, text: 'kWh', size: 16, weight: 600, anchor: 'start' }, 100)
+    expect(t).toMatchObject({ x: 70, y: 10, text: 'kWh', anchor: 'end', size: 16 })
+    expect(mirrorPrim({ k: 'text', x: 30, y: 10, text: 'M', size: 16, weight: 600, anchor: 'middle' }, 100)).toMatchObject({ anchor: 'middle' })
+  })
+
+  it('mirrors rects, circles and polylines', () => {
+    expect(mirrorPrim({ k: 'rect', x: 10, y: 0, w: 30, h: 5 }, 100)).toMatchObject({ x: 60, w: 30 })
+    expect(mirrorPrim({ k: 'circle', cx: 20, cy: 5, r: 3 }, 100)).toMatchObject({ cx: 80 })
+    expect(mirrorPrim({ k: 'poly', pts: [[10, 1], [20, 2]] }, 100)).toMatchObject({ pts: [[90, 1], [80, 2]] })
+  })
+
+  it('handles every path in the library', () => {
+    for (const def of SYMBOLS) for (const p of def.body) if (p.k === 'path') expect(() => mirrorPath(p.d, 100)).not.toThrow()
   })
 })

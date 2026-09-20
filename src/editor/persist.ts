@@ -17,6 +17,9 @@ export function sanitizeDoc(raw: unknown): Doc | null {
   for (const i of items) {
     if (i.scale !== undefined && !SCALES.includes(i.scale as (typeof SCALES)[number])) delete i.scale
   }
+  for (const i of items) {
+    if (i.mirror !== undefined && i.mirror !== true) delete i.mirror
+  }
   const byId = new Map(items.map((i) => [i.id, i]))
   const hasTerminal = (e: { item: string; term: string } | undefined) => {
     const it = e && byId.get(e.item)

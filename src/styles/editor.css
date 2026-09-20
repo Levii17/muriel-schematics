@@ -57,7 +57,11 @@
 .editor-toolbar .sep { width: 1px; height: 22px; background: var(--line); margin: 0 6px; }
 .zoom { min-width: 46px; text-align: center; font-size: 13px; color: var(--muted); }
 
-.canvas-wrap { position: relative; flex: 1; min-height: 0; background: var(--bg); }
+.stage-body { display: flex; flex: 1; min-height: 0; }
+.tool-rail { display: flex; flex-direction: column; gap: 4px; padding: 8px 6px; width: 50px; border-right: 1px solid var(--line); background: var(--surface); }
+.tool-rail .icon-btn { border-color: transparent; }
+.tool-rail .icon-btn[aria-pressed='true'] { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+.canvas-wrap { position: relative; flex: 1; min-width: 0; min-height: 0; background: var(--bg); }
 .canvas { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; color: var(--ink); cursor: default; user-select: none; }
 .canvas.is-armed { cursor: crosshair; }
 .grid-dot { fill: var(--grid-dot); }
@@ -153,3 +157,11 @@
 .factor-row { display: flex; gap: 6px; flex-wrap: wrap; }
 .sheet-form + .sheet-form { margin-top: 0; }
 .guide { stroke: var(--accent); stroke-width: 1; stroke-dasharray: 4 4; opacity: 0.7; pointer-events: none; }
+
+.canvas.is-pan { cursor: grab; }
+.canvas.is-panning { cursor: grabbing; }
+.marquee { fill: color-mix(in srgb, var(--accent) 8%, transparent); stroke: var(--accent); stroke-width: 1; vector-effect: non-scaling-stroke; pointer-events: none; }
+.marquee.cross { stroke-dasharray: 5 4; fill: color-mix(in srgb, var(--out) 9%, transparent); stroke: var(--out); }
+.icon-row { display: flex; gap: 4px; flex-wrap: wrap; margin: 2px 0 8px; }
+.icon-btn.boxed { border-color: var(--line-strong); background: var(--surface-2); width: 34px; height: 34px; }
+.icon-btn.boxed:hover:not(:disabled) { border-color: var(--ink); }

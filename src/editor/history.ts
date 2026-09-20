@@ -1,6 +1,10 @@
 import { SCALES } from '../data/scale'
-import type { Doc, Endpoint, Item, Rot } from './model'
-import { anchorOffset, defOf, emptyDoc, itemScale, scaleDrawing, snap, stepScale, uid } from './model'
+import type { Doc, Endpoint, Item } from './model'
+import type { AlignMode, Axis } from './align'
+import { alignMoves, distributeMoves } from './align'
+import type { Payload } from './clipboard'
+import { anchorOffset, defOf, emptyDoc, itemMirror, itemScale, scaleDrawing, stepScale, uid } from './model'
+import { transformItems } from './transform'
 import type { PaperSize, TitleFields } from './sheet'
 
 export interface History {
@@ -13,6 +17,11 @@ export type Action =
   | { type: 'add'; item: Item }
   | { type: 'move'; ids: string[]; dx: number; dy: number }
   | { type: 'rotate'; ids: string[] }
+  | { type: 'flip'; ids: string[]; axis: Axis }
+  | { type: 'align'; ids: string[]; mode: AlignMode }
+  | { type: 'distribute'; ids: string[]; axis: Axis }
+  | { type: 'paste'; payload: Payload }
+  | { type: 'delete'; items: string[]; wires: string[] }
   | { type: 'resize'; ids: string[]; dir: 1 | -1 }
   | { type: 'set-scale'; ids: string[]; scale: number }
   | { type: 'scale-all'; factor: number }
@@ -21,7 +30,6 @@ export type Action =
   | { type: 'delete-wire'; id: string }
   | { type: 'label'; id: string; label: string }
   | { type: 'wire'; a: Endpoint; b: Endpoint }
-  | { type: 'duplicate'; ids: string[]; newIds: string[]; labels: string[] }
   | { type: 'sheet'; patch: { enabled?: boolean; size?: PaperSize; fields?: Partial<TitleFields> } }
   | { type: 'load'; doc: Doc }
   | { type: 'undo' }
@@ -35,17 +43,9 @@ export const initHistory = (doc: Doc = emptyDoc()): History => ({ past: [], pres
 function withScale(item: Item, scale: number): Item {
   if (!SCALES.includes(scale as (typeof SCALES)[number]) || scale === itemScale(item)) return item
   const def = defOf(item)
-  const before = anchorOffset(def, itemScale(item), item.rot)
-  const after = anchorOffset(def, scale, item.rot)
+  const before = anchorOffset(def, itemScale(item), item.rot, itemMirror(item))
+  const after = anchorOffset(def, scale, item.rot, itemMirror(item))
   return { ...item, scale, x: item.x + before.x - after.x, y: item.y + before.y - after.y }
-}
-
-/** Rotate a quarter turn about the pivot, then nudge so the first terminal is back on the grid. */
-function rotated(item: Item): Item {
-  const def = defOf(item)
-  const rot = ((item.rot + 90) % 360) as Rot
-  const o = anchorOffset(def, itemScale(item), rot)
-  return { ...item, rot, x: item.x + snap(item.x + o.x) - (item.x + o.x), y: item.y + snap(item.y + o.y) - (item.y + o.y) }
 }
 
 /** Apply fn to the listed items; return the same doc object if nothing changed, so no-ops stay out of the undo history. */
@@ -56,6 +56,18 @@ function mapItems(doc: Doc, ids: string[], fn: (i: Item) => Item): Doc {
     const next = fn(i)
     if (next !== i) changed = true
     return next
+  })
+  return changed ? { ...doc, items } : doc
+}
+
+/** Move each listed part by its own offset; the same doc object comes back if nothing moves. */
+function moveEach(doc: Doc, moves: Map<string, { dx: number; dy: number }>): Doc {
+  let changed = false
+  const items = doc.items.map((i) => {
+    const m = moves.get(i.id)
+    if (!m || (m.dx === 0 && m.dy === 0)) return i
+    changed = true
+    return { ...i, x: i.x + m.dx, y: i.y + m.dy }
   })
   return changed ? { ...doc, items } : doc
 }
@@ -74,7 +86,21 @@ function apply(doc: Doc, action: Action): Doc {
         ),
       }
     case 'rotate':
-      return { ...doc, items: doc.items.map((i) => (action.ids.includes(i.id) ? rotated(i) : i)) }
+      return { ...doc, items: transformItems(doc.items, action.ids, 'rot90') }
+    case 'flip':
+      return { ...doc, items: transformItems(doc.items, action.ids, action.axis === 'h' ? 'flipH' : 'flipV') }
+    case 'align':
+      return moveEach(doc, alignMoves(doc.items, action.ids, action.mode))
+    case 'distribute':
+      return moveEach(doc, distributeMoves(doc.items, action.ids, action.axis))
+    case 'paste':
+      return { ...doc, items: [...doc.items, ...action.payload.items], wires: [...doc.wires, ...action.payload.wires] }
+    case 'delete':
+      return {
+        ...doc,
+        items: doc.items.filter((i) => !action.items.includes(i.id)),
+        wires: doc.wires.filter((w) => !action.wires.includes(w.id) && !action.items.includes(w.a.item) && !action.items.includes(w.b.item)),
+      }
     case 'resize':
       return mapItems(doc, action.ids, (i) => withScale(i, stepScale(itemScale(i), action.dir)))
     case 'set-scale':
@@ -104,13 +130,6 @@ function apply(doc: Doc, action: Action): Doc {
       )
       if (exists) return doc
       return { ...doc, wires: [...doc.wires, { id: uid('w'), a: action.a, b: action.b }] }
-    }
-    case 'duplicate': {
-      const copies = action.ids.flatMap((id, n) => {
-        const src = doc.items.find((i) => i.id === id)
-        return src ? [{ ...src, id: action.newIds[n], x: src.x + 40, y: src.y + 40, label: action.labels[n] }] : []
-      })
-      return { ...doc, items: [...doc.items, ...copies] }
     }
     case 'sheet': {
       const { fields, ...rest } = action.patch

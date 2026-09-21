@@ -5,7 +5,7 @@ import { initHistory, reducer } from './history'
 import { dolStarterExample } from './examples'
 import type { Item, Rot } from './model'
 import { SCALES } from '../data/scale'
-import { GRID, alignDelta, itemBounds, scaleDrawing, terminalPoints, nextLabel, pivotOf, routeWire, snap, snapPlacement, stepScale, terminalWorld } from './model'
+import { GRID, alignDelta, itemBounds, noteBounds, scaleDrawing, terminalPoints, nextLabel, pivotOf, routeWire, snap, snapPlacement, stepScale, terminalWorld } from './model'
 import { conflictingItemIds, planFit, planShrink, sheetConflicts } from './checks'
 import { clonePayload, copyPayload } from './clipboard'
 import { blockBox, frameBox } from './sheet'
@@ -167,11 +167,13 @@ describe('drawing sheet in the document', () => {
     }
   })
 
-  it('crops to the parts when the sheet is off', () => {
+  it('crops to the parts and notes when the sheet is off', () => {
     const doc = { ...dolStarterExample(), sheet: { ...dolStarterExample().sheet, enabled: false } }
-    const { svg, width } = diagramToSvg(doc)
-    expect(width).toBeLessThan(600)
-    expect(svg).not.toContain('>MURIEL<')
+    const partsOnly = diagramToSvg({ ...doc, notes: [] })
+    expect(partsOnly.width).toBeLessThan(600)
+    expect(partsOnly.svg).not.toContain('>MURIEL<')
+    // The example's notes sit well to the left of the circuit, so including them widens the picture.
+    expect(diagramToSvg(doc).width).toBeGreaterThan(partsOnly.width)
   })
 
   it('edits sheet fields through the reducer, undoably and without touching other fields', () => {
@@ -305,7 +307,7 @@ describe('part size', () => {
   it('copies size when duplicating and exports resized parts', () => {
     let h = initHistory(dolStarterExample())
     h = reducer(h, { type: 'set-scale', ids: ['e-f1'], scale: 2 })
-    const payload = copyPayload(h.present, { items: ['e-f1'], wires: [] })!
+    const payload = copyPayload(h.present, { items: ['e-f1'], wires: [], notes: [] })!
     const clone = clonePayload(h.present, payload, 40, 40)
     h = reducer(h, { type: 'paste', payload: clone })
     expect(h.present.items.find((i) => i.id === clone.items[0].id)!.scale).toBe(2)
@@ -430,7 +432,7 @@ describe('keeping a drawing on the sheet', () => {
 
   it('does nothing for an empty drawing or with the sheet off', () => {
     const doc = dolStarterExample()
-    expect(planFit({ ...doc, items: [], wires: [] })).toMatchObject({ ok: true, dx: 0, dy: 0 })
+    expect(planFit({ ...doc, items: [], wires: [], notes: [] })).toMatchObject({ ok: true, dx: 0, dy: 0 })
     expect(conflictingItemIds({ ...doc, sheet: { ...doc.sheet, enabled: false }, items: doc.items.map((i) => ({ ...i, x: -999 })) })).toEqual([])
   })
 })
@@ -452,6 +454,11 @@ describe('scaling the whole drawing', () => {
     let ay = Infinity
     for (const it of doc.items) {
       const b = itemBounds(it, getSymbol(it.symbolId)!)
+      ax = Math.min(ax, b.x)
+      ay = Math.min(ay, b.y)
+    }
+    for (const n of doc.notes) {
+      const b = noteBounds(n)
       ax = Math.min(ax, b.x)
       ay = Math.min(ay, b.y)
     }

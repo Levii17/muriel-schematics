@@ -1,17 +1,20 @@
 import type { WireGeometry } from './export'
-import type { Item, Pt, Rect } from './model'
-import { defOf, itemBounds } from './model'
+import type { Item, Pt, Rect, TextNote } from './model'
+import { defOf, itemBounds, noteBounds } from './model'
 
-/** What is selected: any mix of parts and wires. */
+/** What is selected: any mix of parts, wires and text notes. */
 export interface Selection {
   items: string[]
   wires: string[]
+  notes: string[]
 }
 
-export const EMPTY: Selection = { items: [], wires: [] }
+export const EMPTY: Selection = { items: [], wires: [], notes: [] }
 
-export const isEmpty = (s: Selection) => s.items.length === 0 && s.wires.length === 0
-export const countOf = (s: Selection) => s.items.length + s.wires.length
+export const isEmpty = (s: Selection) => s.items.length === 0 && s.wires.length === 0 && s.notes.length === 0
+export const countOf = (s: Selection) => s.items.length + s.wires.length + s.notes.length
+/** Ids of everything that moves, turns or nudges as a body: parts and notes (wires follow their parts). */
+export const bodyIds = (s: Selection) => [...s.items, ...s.notes]
 
 export const toggle = (list: string[], id: string): string[] => (list.includes(id) ? list.filter((x) => x !== id) : [...list, id])
 
@@ -25,20 +28,21 @@ const contains = (outer: Rect, inner: Rect) =>
   inner.x >= outer.x && inner.y >= outer.y && inner.x + inner.w <= outer.x + outer.w && inner.y + inner.h <= outer.y + outer.h
 
 /**
- * Marquee selection, CAD style. Dragging left to right is a "window": only parts fully inside are selected.
+ * Marquee selection, CAD style. Dragging left to right is a "window": only objects fully inside are selected.
  * Right to left is a "crossing": anything the box touches is selected.
  */
 export type BoxMode = 'window' | 'cross'
 
 export const boxMode = (from: Pt, to: Pt): BoxMode => (to.x >= from.x ? 'window' : 'cross')
 
+const pick = (box: Rect, b: Rect, mode: BoxMode) => (mode === 'window' ? contains(box, b) : overlaps(box, b))
+
 export function itemsInBox(items: Item[], box: Rect, mode: BoxMode): string[] {
-  return items
-    .filter((it) => {
-      const b = itemBounds(it, defOf(it))
-      return mode === 'window' ? contains(box, b) : overlaps(box, b)
-    })
-    .map((it) => it.id)
+  return items.filter((it) => pick(box, itemBounds(it, defOf(it)), mode)).map((it) => it.id)
+}
+
+export function notesInBox(notes: TextNote[], box: Rect, mode: BoxMode): string[] {
+  return notes.filter((n) => pick(box, noteBounds(n), mode)).map((n) => n.id)
 }
 
 export function wiresInBox(geoms: WireGeometry[], box: Rect, mode: BoxMode): string[] {

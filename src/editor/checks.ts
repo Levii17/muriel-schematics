@@ -1,40 +1,49 @@
+import { labelBox } from './labels'
 import type { Doc, Rect } from './model'
-import { defOf, itemBounds, scaleDrawing, snap } from './model'
-import { labelPos } from './export'
+import { defOf, itemBounds, noteBounds, scaleDrawing, snap } from './model'
 import { BLOCK_H, BLOCK_W, PAPER_ORDER, blockBox, frameBox } from './sheet'
 import type { PaperSize } from './sheet'
 
 const overlaps = (a: Rect, b: Rect) => a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y
 
+const misplaced = (doc: Doc, b: Rect) => {
+  const f = frameBox(doc.sheet.size)
+  const t = blockBox(doc.sheet.size)
+  const outside = b.x < f.x || b.y < f.y || b.x + b.w > f.x + f.w || b.y + b.h > f.y + f.h
+  return outside || overlaps(b, t)
+}
+
 /** Ids of parts that poke outside the drawing frame or overlap the title block (sheet on only). */
 export function conflictingItemIds(doc: Doc): string[] {
   if (!doc.sheet.enabled) return []
-  const f = frameBox(doc.sheet.size)
-  const t = blockBox(doc.sheet.size)
-  return doc.items
-    .filter((it) => {
-      const b = itemBounds(it, defOf(it))
-      const outside = b.x < f.x || b.y < f.y || b.x + b.w > f.x + f.w || b.y + b.h > f.y + f.h
-      return outside || overlaps(b, t)
-    })
-    .map((it) => it.id)
+  return doc.items.filter((it) => misplaced(doc, itemBounds(it, defOf(it)))).map((it) => it.id)
 }
 
-/** True when the sheet is on and at least one part is misplaced. Parts are never moved automatically. */
-export const sheetConflicts = (doc: Doc) => conflictingItemIds(doc).length > 0
+/** The same test for text notes. */
+export function conflictingNoteIds(doc: Doc): string[] {
+  if (!doc.sheet.enabled) return []
+  return doc.notes.filter((n) => misplaced(doc, noteBounds(n))).map((n) => n.id)
+}
 
-/** Bounding box of every part plus its label, or null for an empty drawing. */
+/** True when the sheet is on and at least one part or note is misplaced. Nothing is moved automatically. */
+export const sheetConflicts = (doc: Doc) => conflictingItemIds(doc).length + conflictingNoteIds(doc).length > 0
+
+/** Bounding box of every part (with its label block) and note, or null for an empty drawing. */
 export function drawingBox(doc: Doc): Rect | null {
-  if (!doc.items.length) return null
+  if (!doc.items.length && !doc.notes.length) return null
   let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity
-  for (const it of doc.items) {
-    const b = itemBounds(it, defOf(it))
-    const lp = labelPos(it)
+  const add = (b: Rect) => {
     x0 = Math.min(x0, b.x)
     y0 = Math.min(y0, b.y)
-    x1 = Math.max(x1, b.x + b.w, it.label ? lp.x + it.label.length * 9 : 0)
+    x1 = Math.max(x1, b.x + b.w)
     y1 = Math.max(y1, b.y + b.h)
   }
+  for (const it of doc.items) {
+    add(itemBounds(it, defOf(it)))
+    const lb = labelBox(it)
+    if (lb) add(lb)
+  }
+  for (const n of doc.notes) add(noteBounds(n))
   return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 }
 }
 

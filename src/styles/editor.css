@@ -165,3 +165,32 @@
 .icon-row { display: flex; gap: 4px; flex-wrap: wrap; margin: 2px 0 8px; }
 .icon-btn.boxed { border-color: var(--line-strong); background: var(--surface-2); width: 34px; height: 34px; }
 .icon-btn.boxed:hover:not(:disabled) { border-color: var(--ink); }
+
+/* text notes and part labels */
+.note-text { font-family: var(--font-sans); fill: var(--ink); pointer-events: none; }
+.note { cursor: move; }
+.note-hit { fill: transparent; stroke: none; }
+.canvas.is-text { cursor: text; }
+.label-hit { fill: transparent; stroke: none; cursor: move; }
+.item-label.rating { font-family: var(--font-sans); font-size: 12px; font-weight: 500; fill: var(--ink); }
+.item-label.desc { font-family: var(--font-sans); font-size: 12px; font-weight: 400; fill: var(--muted); }
+.note-editor {
+  position: absolute;
+  z-index: 5;
+  padding: 2px 4px;
+  margin: -2px 0 0 -4px;
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  resize: none;
+  overflow: hidden;
+  outline: none;
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.note-area { width: 100%; resize: vertical; padding: 8px 10px; border-radius: 9px; border: 1px solid var(--line-strong); background: var(--surface-2); color: var(--ink); font: 14px/1.4 var(--font-sans); }
+.note-area:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.select { height: 34px; border-radius: 9px; border: 1px solid var(--line-strong); background: var(--surface-2); color: var(--ink); font: 14px var(--font-sans); padding: 0 8px; width: 100%; }
+.note-bold { align-self: end; height: 34px; }
+.btn[aria-pressed='true'] { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }

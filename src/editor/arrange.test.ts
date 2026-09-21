@@ -70,7 +70,7 @@ describe('transformItems', () => {
         for (const mirror of [false, true]) {
           const it = mk(def.id, 400, 300, { rot, mirror: mirror || undefined, id: 'p' })
           const before = terms(it)
-          const c = groupCenter([anchor, it])
+          const c = groupCenter([anchor, it], [], 20)
           const [after] = transformItems([anchor, it], ['anchor', 'p'], 'rot90').filter((i) => i.id === 'p')
           terms(after).forEach((p, i) => {
             expect(p.x).toBeCloseTo(c.x - (before[i].y - c.y), 6)
@@ -87,7 +87,7 @@ describe('transformItems', () => {
         for (const mirror of [false, true]) {
           const it = mk(def.id, 400, 300, { rot, mirror: mirror || undefined, scale: 1.5, id: 'p' })
           const before = terms(it)
-          const c = groupCenter([anchor, it])
+          const c = groupCenter([anchor, it], [], 10)
           const h = transformItems([anchor, it], ['anchor', 'p'], 'flipH').find((i) => i.id === 'p')!
           terms(h).forEach((p, i) => {
             expect(p.x, `${def.id} H`).toBeCloseTo(2 * c.x - before[i].x, 6)
@@ -280,7 +280,7 @@ describe('box selection', () => {
     expect(toggle(['a'], 'b')).toEqual(['a', 'b'])
     expect(toggle(['a', 'b'], 'a')).toEqual(['b'])
     expect(isEmpty(EMPTY)).toBe(true)
-    expect(isEmpty({ items: ['a'], wires: [] })).toBe(false)
+    expect(isEmpty({ items: ['a'], wires: [], notes: [] })).toBe(false)
   })
 })
 
@@ -288,15 +288,15 @@ describe('copy and paste', () => {
   const doc = dolStarterExample()
 
   it('copies the parts and only the wires between them', () => {
-    const p = copyPayload(doc, { items: ['e-q1', 'e-k1'], wires: [] })!
+    const p = copyPayload(doc, { items: ['e-q1', 'e-k1'], wires: [], notes: [] })!
     expect(p.items.map((i) => i.id)).toEqual(['e-q1', 'e-k1'])
     expect(p.wires).toHaveLength(3) // Q1 -> K1 only; the wires to the supply and overload are left behind
     expect(copyPayload(doc, EMPTY)).toBeNull()
-    expect(copyPayload(doc, { items: [], wires: ['ew0'] })).toBeNull()
+    expect(copyPayload(doc, { items: [], wires: ['ew0'], notes: [] })).toBeNull()
   })
 
   it('creates new ids, remaps the wires and renumbers automatic labels', () => {
-    const p = copyPayload(doc, { items: ['e-q1', 'e-k1'], wires: [] })!
+    const p = copyPayload(doc, { items: ['e-q1', 'e-k1'], wires: [], notes: [] })!
     const clone = clonePayload(doc, p, 40, 60)
     expect(clone.items.map((i) => i.label)).toEqual(['Q2', 'K2'])
     const ids = new Set([...doc.items, ...clone.items].map((i) => i.id))
@@ -312,20 +312,20 @@ describe('copy and paste', () => {
 
   it('keeps custom labels, size and reflection', () => {
     const custom: Doc = { ...doc, items: doc.items.map((i) => (i.id === 'e-q1' ? { ...i, label: 'Main breaker', scale: 1.5, mirror: true } : i)) }
-    const p = copyPayload(custom, { items: ['e-q1'], wires: [] })!
+    const p = copyPayload(custom, { items: ['e-q1'], wires: [], notes: [] })!
     const clone = clonePayload(custom, p, 20, 20)
     expect(clone.items[0]).toMatchObject({ label: 'Main breaker', scale: 1.5, mirror: true })
   })
 
   it('numbers successive pastes correctly', () => {
-    const p = copyPayload(doc, { items: ['e-m1'], wires: [] })!
+    const p = copyPayload(doc, { items: ['e-m1'], wires: [], notes: [] })!
     let h = initHistory(doc)
     for (let n = 1; n <= 3; n++) h = reducer(h, { type: 'paste', payload: clonePayload(h.present, p, 40 * n, 40 * n) })
     expect(h.present.items.filter((i) => i.symbolId === 'motor-3ph-dol').map((i) => i.label)).toEqual(['M1', 'M2', 'M3', 'M4'])
   })
 
   it('pastes parts and wires as one undoable step, without touching the original', () => {
-    const p = copyPayload(doc, { items: ['e-q1', 'e-k1'], wires: [] })!
+    const p = copyPayload(doc, { items: ['e-q1', 'e-k1'], wires: [], notes: [] })!
     let h = initHistory(doc)
     h = reducer(h, { type: 'paste', payload: clonePayload(doc, p, 40, 40) })
     expect(h.present.items).toHaveLength(doc.items.length + 2)

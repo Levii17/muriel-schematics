@@ -1,6 +1,6 @@
 import { getSymbol } from '../data'
 import { SCALES } from '../data/scale'
-import type { Doc } from './model'
+import type { Doc, TextNote } from './model'
 import { mergeSheet } from './sheet'
 
 /**
@@ -26,5 +26,30 @@ export function sanitizeDoc(raw: unknown): Doc | null {
     return !!it && !!getSymbol(it.symbolId)?.terminals.some((t) => t.id === e.term)
   }
   const wires = r.wires.filter((w) => w && hasTerminal(w.a) && hasTerminal(w.b))
-  return { items, wires, sheet: mergeSheet(r.sheet) }
+  for (const i of items) {
+    for (const k of ['rating', 'description', 'partNo'] as const) {
+      const v = i[k] as unknown
+      if (typeof v === 'string' && v.trim()) i[k] = v.trim().slice(0, 60)
+      else delete i[k]
+    }
+    const o = i.labelOffset as unknown as { x?: unknown; y?: unknown } | undefined
+    if (o !== undefined && !(o && Number.isFinite(o.x) && Number.isFinite(o.y))) delete i.labelOffset
+  }
+  return { items, wires, notes: sanitizeNotes((r as { notes?: unknown }).notes), sheet: mergeSheet(r.sheet) }
+}
+
+const ALIGNS = ['start', 'middle', 'end']
+
+/** Keep only well-formed notes; clamp sizes and text length so stored junk cannot break drawing. */
+export function sanitizeNotes(raw: unknown): TextNote[] {
+  if (!Array.isArray(raw)) return []
+  return raw.flatMap((n): TextNote[] => {
+    if (!n || typeof n.id !== 'string' || typeof n.text !== 'string') return []
+    if (!Number.isFinite(n.x) || !Number.isFinite(n.y) || !Number.isFinite(n.size)) return []
+    const note: TextNote = { id: n.id, x: n.x, y: n.y, text: n.text.slice(0, 2000), size: Math.min(96, Math.max(6, n.size)) }
+    if (n.bold === true) note.bold = true
+    if (typeof n.align === 'string' && ALIGNS.includes(n.align) && n.align !== 'start') note.align = n.align as TextNote['align']
+    if (n.rot === 90 || n.rot === 180 || n.rot === 270) note.rot = n.rot
+    return [note]
+  })
 }

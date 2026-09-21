@@ -7,8 +7,8 @@ import {
 import { SCALES } from '../data/scale'
 import type { AlignMode, Axis } from './align'
 import type { FitPlan } from './checks'
-import type { Doc, Endpoint } from './model'
-import { defOf, itemScale, scaleDrawing } from './model'
+import type { Doc, Endpoint, Item, TextNote } from './model'
+import { NOTE_SIZES, defOf, itemScale, noteRot, scaleDrawing } from './model'
 import type { Selection } from './select'
 import { FIELD_DEFS, PAPER_ORDER } from './sheet'
 import type { PaperSize, SheetConfig, TitleFields } from './sheet'
@@ -20,6 +20,9 @@ export interface InspectorProps {
   shrinkPlan: { factor: number } | null
   conflictCount: number
   onLabel: (id: string, label: string) => void
+  onProps: (id: string, patch: Partial<Pick<Item, 'rating' | 'description' | 'partNo'>>) => void
+  onResetLabel: (id: string) => void
+  onNote: (id: string, patch: Partial<Omit<TextNote, 'id'>>) => void
   onSheet: (patch: { enabled?: boolean; size?: PaperSize; fields?: Partial<TitleFields> }) => void
   onResize: (dir: 1 | -1) => void
   onSetScale: (scale: number) => void
@@ -78,9 +81,10 @@ export function Inspector(p: InspectorProps) {
   const { doc, selection } = p
   const items = doc.items.filter((i) => selection.items.includes(i.id))
   const wires = doc.wires.filter((w) => selection.wires.includes(w.id))
+  const notes = doc.notes.filter((n) => selection.notes.includes(n.id))
   const name = (e: Endpoint) => `${doc.items.find((i) => i.id === e.item)?.label || 'part'}·${e.term}`
 
-  if (items.length === 0 && wires.length > 0) {
+  if (items.length === 0 && notes.length === 0 && wires.length > 0) {
     return (
       <div className="inspector-body">
         <p className="eyebrow">Selected</p>
@@ -97,7 +101,7 @@ export function Inspector(p: InspectorProps) {
     )
   }
 
-  if (items.length === 1) {
+  if (items.length === 1 && notes.length === 0) {
     const item = items[0]
     const def = defOf(item)
     const conns = doc.wires.flatMap((w) => {
@@ -109,6 +113,13 @@ export function Inspector(p: InspectorProps) {
         <p className="eyebrow">Selected{wires.length ? ` · +${wires.length} ${wires.length === 1 ? 'wire' : 'wires'}` : ''}</p>
         <h2>{def.name}</h2>
         <LabelField key={item.id + item.label} value={item.label} onCommit={(v) => p.onLabel(item.id, v)} />
+        <CommitField label="Rating" value={item.rating ?? ''} placeholder="e.g. 32 A, 10 kA" maxLength={60} onCommit={(v) => p.onProps(item.id, { rating: v })} />
+        <CommitField label="Description" value={item.description ?? ''} placeholder="e.g. Main breaker" maxLength={60} onCommit={(v) => p.onProps(item.id, { description: v })} />
+        <CommitField label="Part no." value={item.partNo ?? ''} placeholder="Manufacturer code (not drawn)" maxLength={60} onCommit={(v) => p.onProps(item.id, { partNo: v })} />
+        {item.labelOffset && (
+          <button className="btn small" onClick={() => p.onResetLabel(item.id)}>Reset label position</button>
+        )}
+        <p className="muted small">Drag the label on the canvas to move it. Rating and description are drawn under it.</p>
         <SizeControl scales={items.map(itemScale)} onStep={p.onResize} onSet={p.onSetScale} />
         <PartActions onRotate={p.onRotate} onFlip={p.onFlip} onDuplicate={p.onDuplicate} onDelete={p.onDelete} />
         <h3>Terminals</h3>
@@ -128,15 +139,24 @@ export function Inspector(p: InspectorProps) {
     )
   }
 
-  if (items.length > 1) {
+  if (items.length === 0 && notes.length === 1) {
+    return <NoteFields note={notes[0]} onNote={p.onNote} onRotate={p.onRotate} onDuplicate={p.onDuplicate} onDelete={p.onDelete} />
+  }
+
+  if (items.length + notes.length > 1) {
+    const bits = [
+      items.length && `${items.length} ${items.length === 1 ? 'part' : 'parts'}`,
+      notes.length && `${notes.length} ${notes.length === 1 ? 'note' : 'notes'}`,
+      wires.length && `${wires.length} ${wires.length === 1 ? 'wire' : 'wires'}`,
+    ].filter(Boolean)
     return (
       <div className="inspector-body">
         <p className="eyebrow">Selected</p>
-        <h2>{items.length} parts{wires.length ? ` and ${wires.length} ${wires.length === 1 ? 'wire' : 'wires'}` : ''}</h2>
-        <SizeControl scales={items.map(itemScale)} onStep={p.onResize} onSet={p.onSetScale} />
+        <h2>{bits.join(' and ')}</h2>
+        {items.length > 0 && <SizeControl scales={items.map(itemScale)} onStep={p.onResize} onSet={p.onSetScale} />}
         <PartActions onRotate={p.onRotate} onFlip={p.onFlip} onDuplicate={p.onDuplicate} onDelete={p.onDelete} />
         <p className="muted small">Rotate and flip turn the group as a whole, so wires between the parts keep their shape.</p>
-        <ArrangeControls count={items.length} onAlign={p.onAlign} onDistribute={p.onDistribute} />
+        {items.length > 1 && <ArrangeControls count={items.length} onAlign={p.onAlign} onDistribute={p.onDistribute} />}
       </div>
     )
   }
@@ -150,7 +170,8 @@ export function Inspector(p: InspectorProps) {
       <SheetForm sheet={doc.sheet} conflictCount={p.conflictCount} plan={p.fitPlan} shrink={p.shrinkPlan} onShrink={p.onShrink} onFit={p.onFitSheet} onChange={p.onSheet} />
       <h3>Shortcuts</h3>
       <dl className="shortcuts">
-        <dt><kbd>V</kbd> <kbd>H</kbd></dt><dd>Select tool / Pan tool</dd>
+        <dt><kbd>V</kbd> <kbd>H</kbd> <kbd>T</kbd></dt><dd>Select / Pan / Text tool</dd>
+        <dt>Double-click text</dt><dd>Edit it in place</dd>
         <dt><kbd>Space</kbd>+drag</dt><dd>Pan (also middle mouse)</dd>
         <dt>Drag empty area</dt><dd>Box select: left to right = inside only, right to left = touching</dd>
         <dt><kbd>Shift</kbd>+click</dt><dd>Add or remove from selection</dd>
@@ -291,5 +312,72 @@ function SheetForm({ sheet, conflictCount, plan, shrink, onShrink, onFit, onChan
         </div>
       ))}
     </fieldset>
+  )
+}
+
+/** Multi-line text box that commits on blur (not per keystroke), so typing stays out of the undo history. */
+function CommitTextarea({ label, value, onCommit }: { label: string; value: string; onCommit: (v: string) => void }) {
+  const [v, setV] = useState(value)
+  useEffect(() => setV(value), [value])
+  return (
+    <label className="field">
+      <span>{label}</span>
+      <textarea
+        className="note-area"
+        value={v}
+        rows={Math.min(8, Math.max(3, v.split('\n').length))}
+        onChange={(e) => setV(e.target.value)}
+        onBlur={() => v.replace(/\s+$/g, '') !== value && v.trim() && onCommit(v.replace(/\s+$/g, ''))}
+      />
+    </label>
+  )
+}
+
+const ALIGN_OPTIONS: { value: 'start' | 'middle' | 'end'; label: string }[] = [
+  { value: 'start', label: 'Left' },
+  { value: 'middle', label: 'Centre' },
+  { value: 'end', label: 'Right' },
+]
+
+function NoteFields({
+  note, onNote, onRotate, onDuplicate, onDelete,
+}: { note: TextNote; onNote: InspectorProps['onNote']; onRotate: () => void; onDuplicate: () => void; onDelete: () => void }) {
+  const sizes = NOTE_SIZES.includes(note.size) ? NOTE_SIZES : [...NOTE_SIZES, note.size].sort((a, b) => a - b)
+  return (
+    <div className="inspector-body">
+      <p className="eyebrow">Selected</p>
+      <h2>Text</h2>
+      <CommitTextarea label="Text" value={note.text} onCommit={(text) => onNote(note.id, { text })} />
+      <div className="pair">
+        <label className="field">
+          <span>Size</span>
+          <select className="select" value={note.size} onChange={(e) => onNote(note.id, { size: Number(e.target.value) })}>
+            {sizes.map((s) => (
+              <option key={s} value={s}>{s} px</option>
+            ))}
+          </select>
+        </label>
+        <label className="switch note-bold">
+          <input type="checkbox" checked={note.bold === true} onChange={(e) => onNote(note.id, { bold: e.target.checked ? true : undefined })} />
+          <span>Bold</span>
+        </label>
+      </div>
+      <div className="field">
+        <span>Alignment</span>
+        <div className="row" role="group" aria-label="Text alignment">
+          {ALIGN_OPTIONS.map((o) => (
+            <button key={o.value} className="btn small" aria-pressed={(note.align ?? 'start') === o.value} onClick={() => onNote(note.id, { align: o.value === 'start' ? undefined : o.value })}>
+              {o.label}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="row">
+        <button className="btn small" onClick={onRotate} title="Rotate (R)"><RotateIcon /> Rotate{noteRot(note) ? ` (${noteRot(note)}°)` : ''}</button>
+        <button className="btn small" onClick={onDuplicate} title="Duplicate (Ctrl+D)"><DuplicateIcon /> Duplicate</button>
+        <button className="btn small danger" onClick={onDelete} title="Delete (Del)"><TrashIcon /> Delete</button>
+      </div>
+      <p className="muted small">Double-click text on the canvas to edit it in place.</p>
+    </div>
   )
 }

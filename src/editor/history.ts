@@ -1,10 +1,10 @@
 import { SCALES } from '../data/scale'
-import type { Doc, Endpoint, Item } from './model'
+import type { Doc, Endpoint, Item, Pt, TextNote } from './model'
 import type { AlignMode, Axis } from './align'
 import { alignMoves, distributeMoves } from './align'
 import type { Payload } from './clipboard'
 import { anchorOffset, defOf, emptyDoc, itemMirror, itemScale, scaleDrawing, stepScale, uid } from './model'
-import { transformItems } from './transform'
+import { transformDoc } from './transform'
 import type { PaperSize, TitleFields } from './sheet'
 
 export interface History {
@@ -21,7 +21,11 @@ export type Action =
   | { type: 'align'; ids: string[]; mode: AlignMode }
   | { type: 'distribute'; ids: string[]; axis: Axis }
   | { type: 'paste'; payload: Payload }
-  | { type: 'delete'; items: string[]; wires: string[] }
+  | { type: 'delete'; items: string[]; wires: string[]; notes?: string[] }
+  | { type: 'add-note'; note: TextNote }
+  | { type: 'edit-note'; id: string; patch: Partial<Omit<TextNote, 'id'>> }
+  | { type: 'props'; id: string; patch: Partial<Pick<Item, 'rating' | 'description' | 'partNo'>> }
+  | { type: 'label-offset'; id: string; offset: Pt | null }
   | { type: 'resize'; ids: string[]; dir: 1 | -1 }
   | { type: 'set-scale'; ids: string[]; scale: number }
   | { type: 'scale-all'; factor: number }
@@ -81,23 +85,70 @@ function apply(doc: Doc, action: Action): Doc {
     case 'move':
       return {
         ...doc,
-        items: doc.items.map((i) =>
-          action.ids.includes(i.id) ? { ...i, x: i.x + action.dx, y: i.y + action.dy } : i,
-        ),
+        items: doc.items.map((i) => (action.ids.includes(i.id) ? { ...i, x: i.x + action.dx, y: i.y + action.dy } : i)),
+        notes: doc.notes.map((n) => (action.ids.includes(n.id) ? { ...n, x: n.x + action.dx, y: n.y + action.dy } : n)),
       }
     case 'rotate':
-      return { ...doc, items: transformItems(doc.items, action.ids, 'rot90') }
+      return { ...doc, ...transformDoc(doc, action.ids, 'rot90') }
     case 'flip':
-      return { ...doc, items: transformItems(doc.items, action.ids, action.axis === 'h' ? 'flipH' : 'flipV') }
+      return { ...doc, ...transformDoc(doc, action.ids, action.axis === 'h' ? 'flipH' : 'flipV') }
     case 'align':
       return moveEach(doc, alignMoves(doc.items, action.ids, action.mode))
     case 'distribute':
       return moveEach(doc, distributeMoves(doc.items, action.ids, action.axis))
     case 'paste':
-      return { ...doc, items: [...doc.items, ...action.payload.items], wires: [...doc.wires, ...action.payload.wires] }
+      return {
+        ...doc,
+        items: [...doc.items, ...action.payload.items],
+        wires: [...doc.wires, ...action.payload.wires],
+        notes: [...doc.notes, ...action.payload.notes],
+      }
+    case 'add-note':
+      return { ...doc, notes: [...doc.notes, action.note] }
+    case 'edit-note': {
+      let changed = false
+      const notes = doc.notes.map((n) => {
+        if (n.id !== action.id) return n
+        const next: TextNote = { ...n, ...action.patch }
+        for (const k of Object.keys(next) as (keyof TextNote)[]) if (next[k] === undefined) delete next[k]
+        if (JSON.stringify(next) !== JSON.stringify(n)) changed = true
+        return next
+      })
+      return changed ? { ...doc, notes } : doc
+    }
+    case 'props': {
+      let changed = false
+      const items = doc.items.map((i) => {
+        if (i.id !== action.id) return i
+        const next: Item = { ...i }
+        for (const [k, v] of Object.entries(action.patch) as ['rating' | 'description' | 'partNo', string | undefined][]) {
+          const clean = (v ?? '').trim().slice(0, 60)
+          if (clean) next[k] = clean
+          else delete next[k]
+        }
+        if (JSON.stringify(next) !== JSON.stringify(i)) changed = true
+        return next
+      })
+      return changed ? { ...doc, items } : doc
+    }
+    case 'label-offset': {
+      let changed = false
+      const items = doc.items.map((i) => {
+        if (i.id !== action.id) return i
+        const off = action.offset && (action.offset.x !== 0 || action.offset.y !== 0) ? { x: action.offset.x, y: action.offset.y } : undefined
+        if (JSON.stringify(off) === JSON.stringify(i.labelOffset)) return i
+        changed = true
+        const next: Item = { ...i }
+        if (off) next.labelOffset = off
+        else delete next.labelOffset
+        return next
+      })
+      return changed ? { ...doc, items } : doc
+    }
     case 'delete':
       return {
         ...doc,
+        notes: doc.notes.filter((n) => !(action.notes ?? []).includes(n.id)),
         items: doc.items.filter((i) => !action.items.includes(i.id)),
         wires: doc.wires.filter((w) => !action.wires.includes(w.id) && !action.items.includes(w.a.item) && !action.items.includes(w.b.item)),
       }
@@ -111,6 +162,7 @@ function apply(doc: Doc, action: Action): Doc {
       return {
         ...doc,
         items: doc.items.map((i) => ({ ...i, x: i.x + action.dx, y: i.y + action.dy })),
+        notes: doc.notes.map((n) => ({ ...n, x: n.x + action.dx, y: n.y + action.dy })),
         sheet: { ...doc.sheet, size: action.size },
       }
     case 'delete-items':

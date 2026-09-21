@@ -1,5 +1,5 @@
 import { getSymbol } from '../data'
-import type { Doc, Item, Wire } from './model'
+import type { Doc, Item, TextNote, Wire } from './model'
 import { nextLabel, pivotOf } from './model'
 import { defaultSheet } from './sheet'
 
@@ -25,6 +25,22 @@ export function dolStarterExample(): Doc {
   place('e-f1', 'overload-relay-3p', 0, 400)
   place('e-m1', 'motor-3ph-dol', 0, 560)
 
+  // Ratings and descriptions show under each part's label.
+  const props: Record<string, Partial<Item>> = {
+    'e-q1': { rating: '32 A, 10 kA', description: 'Main breaker' },
+    'e-k1': { rating: 'AC-3, 25 A', description: 'Motor contactor' },
+    'e-f1': { rating: '12 to 18 A', description: 'Overload relay' },
+    'e-m1': { rating: '7.5 kW, 400 V', description: 'Pump motor' },
+  }
+  items.forEach((it, n) => {
+    if (props[it.id]) items[n] = { ...it, ...props[it.id] }
+  })
+
+  const notes: TextNote[] = [
+    { id: 'e-n1', x: 100, y: 200, text: 'NOTES', size: 14, bold: true },
+    { id: 'e-n2', x: 100, y: 228, text: '1. Wire size 2.5 mm² unless stated.\n2. Set the overload relay to the motor nameplate current.', size: 12 },
+  ]
+
   const wires: Wire[] = []
   const wire = (a: string, at: string, b: string, bt: string) =>
     wires.push({ id: `ew${wires.length}`, a: { item: a, term: at }, b: { item: b, term: bt } })
@@ -47,5 +63,5 @@ export function dolStarterExample(): Doc {
       revision: 'A',
     },
   }
-  return { items, wires, sheet }
+  return { items, wires, notes, sheet }
 }

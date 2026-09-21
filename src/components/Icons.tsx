@@ -40,3 +40,4 @@ export const AlignMiddleIcon = () => <Icon><path d="M3 12h18M8 6v12M14 8v8" /></
 export const AlignBottomIcon = () => <Icon><path d="M4 20h16M8 4v12M14 9v7" /></Icon>
 export const DistributeHIcon = () => <Icon><path d="M4 4v16M20 4v16M10 8h4v8h-4z" /></Icon>
 export const DistributeVIcon = () => <Icon><path d="M4 4h16M4 20h16M8 10h8v4H8z" /></Icon>
+export const TextIcon = () => <Icon><path d="M5 6V4h14v2M12 4v16M9 20h6" /></Icon>

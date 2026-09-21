@@ -20,6 +20,28 @@ export interface Item {
   scale?: number
   /** Reflected left-to-right about the pivot, before rotation. Absent means not reflected. */
   mirror?: boolean
+  /** Electrical rating, shown under the label, e.g. "32 A, 10 kA". */
+  rating?: string
+  /** Short description, shown under the rating, e.g. "Main breaker". */
+  description?: string
+  /** Manufacturer part number. Not drawn; kept for a future bill of materials. */
+  partNo?: string
+  /** How far the label block has been dragged from its default spot, in canvas px. */
+  labelOffset?: { x: number; y: number }
+}
+
+/** Free text on the drawing: notes, titles, annotations. Several lines are separated by "\n". */
+export interface TextNote {
+  id: string
+  /** Where the first line's baseline starts (or is centred / ends, per `align`). */
+  x: number
+  y: number
+  text: string
+  size: number
+  bold?: boolean
+  /** Which point of each line sits at x. Absent means the start (left for horizontal text). */
+  align?: 'start' | 'middle' | 'end'
+  rot?: Rot
 }
 export interface Endpoint {
   item: string
@@ -33,6 +55,7 @@ export interface Wire {
 export interface Doc {
   items: Item[]
   wires: Wire[]
+  notes: TextNote[]
   /** Paper, border and title block. Drawn under the circuit when `sheet.enabled`. */
   sheet: SheetConfig
 }
@@ -47,7 +70,7 @@ export interface Rect {
   h: number
 }
 
-export const emptyDoc = (): Doc => ({ items: [], wires: [], sheet: defaultSheet() })
+export const emptyDoc = (): Doc => ({ items: [], wires: [], notes: [], sheet: defaultSheet() })
 
 // "+ 0" turns -0 into 0 so coordinates never print as "-0".
 export const snap = (v: number) => Math.round(v / GRID) * GRID + 0
@@ -140,6 +163,41 @@ export function itemBounds(item: Item, def: SymbolDef): Rect {
   const pts = corners.map(([cx, cy]) => rotateVec(mx * (cx - pv.x) * k, (cy - pv.y) * k, item.rot))
   const xs = pts.map((p) => item.x + p[0])
   const ys = pts.map((p) => item.y + p[1])
+  const x = Math.min(...xs)
+  const y = Math.min(...ys)
+  return { x, y, w: Math.max(...xs) - x, h: Math.max(...ys) - y }
+}
+
+/* ---------- text notes ---------- */
+
+/** Sizes offered in the inspector. Any positive size is drawn, these are just the presets. */
+export const NOTE_SIZES = [10, 12, 14, 18, 24, 32]
+export const NOTE_LINE = 1.3
+
+export const noteLines = (n: Pick<TextNote, 'text'>) => n.text.split('\n')
+export const noteRot = (n: Pick<TextNote, 'rot'>): Rot => n.rot ?? 0
+
+/** Text extent in the note's own frame (before rotation), origin at the first baseline's anchor. Widths are estimated. */
+export function noteLocalBox(n: TextNote): Rect {
+  const lines = noteLines(n)
+  const w = Math.max(...lines.map((l) => l.length), 1) * n.size * (n.bold ? 0.62 : 0.58)
+  const h = lines.length * n.size * NOTE_LINE
+  const x = n.align === 'middle' ? -w / 2 : n.align === 'end' ? -w : 0
+  return { x, y: -n.size, w, h }
+}
+
+/** Where a note sits on the canvas, as an axis-aligned box. */
+export function noteBounds(n: TextNote): Rect {
+  const b = noteLocalBox(n)
+  const r = noteRot(n)
+  const pts = [
+    [b.x, b.y],
+    [b.x + b.w, b.y],
+    [b.x + b.w, b.y + b.h],
+    [b.x, b.y + b.h],
+  ].map(([x, y]) => rotateVec(x, y, r))
+  const xs = pts.map((p) => n.x + p[0])
+  const ys = pts.map((p) => n.y + p[1])
   const x = Math.min(...xs)
   const y = Math.min(...ys)
   return { x, y, w: Math.max(...xs) - x, h: Math.max(...ys) - y }
@@ -292,7 +350,14 @@ export function scaleDrawing(doc: Doc, factor: number): Doc | null {
     ax = Math.min(ax, b.x)
     ay = Math.min(ay, b.y)
   }
+  for (const n of doc.notes) {
+    const b = noteBounds(n)
+    ax = Math.min(ax, b.x)
+    ay = Math.min(ay, b.y)
+  }
   const r = (v: number) => Math.round(v * 100) / 100
+  // Text follows the drawing: its size moves to the nearest preset, so it never becomes unreadably small or huge.
+  const nearestSize = (v: number) => NOTE_SIZES.reduce((best, s) => (Math.abs(s - v) < Math.abs(best - v) ? s : best), NOTE_SIZES[0])
   return {
     ...doc,
     items: doc.items.map((it, n) => ({
@@ -300,6 +365,13 @@ export function scaleDrawing(doc: Doc, factor: number): Doc | null {
       scale: next[n] === 1 ? undefined : next[n],
       x: r(ax + (it.x - ax) * factor),
       y: r(ay + (it.y - ay) * factor),
+      ...(it.labelOffset ? { labelOffset: { x: r(it.labelOffset.x * factor), y: r(it.labelOffset.y * factor) } } : {}),
+    })),
+    notes: doc.notes.map((n) => ({
+      ...n,
+      x: r(ax + (n.x - ax) * factor),
+      y: r(ay + (n.y - ay) * factor),
+      size: nearestSize(n.size * factor),
     })),
   }
 }

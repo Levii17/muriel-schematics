@@ -5,28 +5,29 @@ import type { SymbolDef } from '../data/types'
 import { GlyphBody, Prims, SymbolSvg } from '../components/Glyph'
 import {
   CursorIcon, DuplicateIcon, FitIcon, FlipHIcon, FlipVIcon, HandIcon, MinusIcon, PlusIcon, PrintIcon, RedoIcon, RotateIcon,
-  TrashIcon, UndoIcon, WarnIcon,
+  TextIcon, TrashIcon, UndoIcon, WarnIcon,
 } from '../components/Icons'
 import { loadJson, saveJson } from '../lib/hooks'
 import { printSheet } from '../lib/print'
 import { searchSymbols } from '../lib/search'
 import { downloadBlob, downloadText, svgToPngBlob } from '../lib/svg'
 import type { AlignMode, Axis } from './align'
-import { conflictingItemIds, planFit, planShrink } from './checks'
+import { conflictingItemIds, conflictingNoteIds, planFit, planShrink } from './checks'
 import type { Payload } from './clipboard'
 import { clonePayload, copyPayload } from './clipboard'
 import { dolStarterExample } from './examples'
-import { diagramToSvg, junctions, labelPos, wireGeometries } from './export'
+import { diagramToSvg, junctions, wireGeometries } from './export'
 import { initHistory, reducer } from './history'
 import { Inspector } from './Inspector'
-import type { Doc, Endpoint, Item, Pt, Rot } from './model'
+import { LABEL_LINE_H, labelBox, labelLines, labelPos } from './labels'
+import type { Doc, Endpoint, Item, Pt, Rot, TextNote } from './model'
 import {
-  alignDelta, defOf, itemBounds, itemMirror, itemScale, nextLabel, pivotOf, pointsToPath, routeWire, scaleDrawing, snap,
-  snapPlacement, terminalPoints, terminalWorld, uid,
+  NOTE_LINE, alignDelta, defOf, itemBounds, itemMirror, itemScale, nextLabel, noteBounds, noteLines, noteLocalBox, noteRot, pivotOf,
+  pointsToPath, routeWire, scaleDrawing, snap, snapPlacement, terminalPoints, terminalWorld, uid,
 } from './model'
 import { sanitizeDoc } from './persist'
 import type { Selection } from './select'
-import { EMPTY, boxMode, isEmpty, itemsInBox, normBox, toggle, wiresInBox } from './select'
+import { EMPTY, bodyIds, boxMode, countOf, isEmpty, itemsInBox, normBox, notesInBox, toggle, wiresInBox } from './select'
 import { PAPER, paperBox, sheetPrims } from './sheet'
 import { nextOrientation } from './transform'
 
@@ -36,8 +37,9 @@ const MAX_ZOOM = 3
 const SNAP_RADIUS = 18
 /** Screen pixels a press must travel before it counts as a drag rather than a click. */
 const DRAG_THRESHOLD = 4
+const LABEL_SNAP = 5
 
-type Tool = 'select' | 'pan'
+type Tool = 'select' | 'pan' | 'text'
 interface View {
   x: number
   y: number
@@ -76,6 +78,8 @@ export default function Editor({ armId, loadExample, onToast }: Props) {
   const [ghost, setGhost] = useState<Pt | null>(null)
   const [rawSelection, setSelection] = useState<Selection>(EMPTY)
   const [drag, setDrag] = useState<{ ids: string[]; start: Pt; delta: Pt; clickId: string; shift: boolean } | null>(null)
+  const [labelDrag, setLabelDrag] = useState<{ id: string; start: Pt; delta: Pt } | null>(null)
+  const [editing, setEditing] = useState<{ note: TextNote; isNew: boolean } | null>(null)
   const [marquee, setMarquee] = useState<Marquee | null>(null)
   const [wiring, setWiring] = useState<{ from: Endpoint; cursor: Pt; target: Endpoint | null } | null>(null)
   const [query, setQuery] = useState('')
@@ -84,6 +88,7 @@ export default function Editor({ armId, loadExample, onToast }: Props) {
   const svgRef = useRef<SVGSVGElement>(null)
   const panRef = useRef<{ sx: number; sy: number; vx: number; vy: number } | null>(null)
   const clipRef = useRef<Payload | null>(null)
+  const editFocused = useRef(false)
   const pasteCount = useRef(0)
   const viewRef = useRef(view)
   viewRef.current = view
@@ -94,27 +99,44 @@ export default function Editor({ armId, loadExample, onToast }: Props) {
   const selection: Selection = useMemo(() => {
     const items = rawSelection.items.filter((id) => doc.items.some((i) => i.id === id))
     const wires = rawSelection.wires.filter((id) => doc.wires.some((w) => w.id === id))
-    return items.length === rawSelection.items.length && wires.length === rawSelection.wires.length ? rawSelection : { items, wires }
-  }, [rawSelection, doc.items, doc.wires])
+    const notes = rawSelection.notes.filter((id) => doc.notes.some((n) => n.id === id))
+    return items.length === rawSelection.items.length && wires.length === rawSelection.wires.length && notes.length === rawSelection.notes.length
+      ? rawSelection
+      : { items, wires, notes }
+  }, [rawSelection, doc.items, doc.wires, doc.notes])
 
   /* ---------- derived ---------- */
 
-  // While dragging, render items at their tentative positions so wires follow live.
+  // While dragging, render things at their tentative positions so wires and labels follow live.
   const shown: Doc = useMemo(() => {
-    if (!drag || (drag.delta.x === 0 && drag.delta.y === 0)) return doc
-    return {
-      ...doc,
-      items: doc.items.map((i) => (drag.ids.includes(i.id) ? { ...i, x: i.x + drag.delta.x, y: i.y + drag.delta.y } : i)),
+    let d = doc
+    if (drag && (drag.delta.x !== 0 || drag.delta.y !== 0)) {
+      const { ids, delta } = drag
+      d = {
+        ...d,
+        items: d.items.map((i) => (ids.includes(i.id) ? { ...i, x: i.x + delta.x, y: i.y + delta.y } : i)),
+        notes: d.notes.map((n) => (ids.includes(n.id) ? { ...n, x: n.x + delta.x, y: n.y + delta.y } : n)),
+      }
     }
-  }, [doc, drag])
+    if (labelDrag && (labelDrag.delta.x !== 0 || labelDrag.delta.y !== 0)) {
+      const { id, delta } = labelDrag
+      d = {
+        ...d,
+        items: d.items.map((i) => (i.id === id ? { ...i, labelOffset: { x: (i.labelOffset?.x ?? 0) + delta.x, y: (i.labelOffset?.y ?? 0) + delta.y } } : i)),
+      }
+    }
+    return d
+  }, [doc, drag, labelDrag])
 
   const sheetArt = useMemo(() => (doc.sheet.enabled ? sheetPrims(doc.sheet) : null), [doc.sheet])
   const wires = useMemo(() => wireGeometries(shown), [shown])
   const dots = useMemo(() => junctions(shown), [shown])
   const selectedItems = doc.items.filter((i) => selection.items.includes(i.id))
+  const selectedNotes = shown.notes.filter((n) => selection.notes.includes(n.id))
 
   const filtered = useMemo(() => searchSymbols(SYMBOLS, query), [query])
   const conflictIds = useMemo(() => conflictingItemIds(shown), [shown])
+  const conflictNoteIds = useMemo(() => conflictingNoteIds(shown), [shown])
   const fitPlan = useMemo(() => planFit(doc), [doc])
   const shrinkPlan = useMemo(() => (fitPlan.ok ? null : planShrink(doc)), [doc, fitPlan])
 
@@ -141,7 +163,7 @@ export default function Editor({ armId, loadExample, onToast }: Props) {
 
   const fit = useCallback((d: Doc) => {
     const r = svgRef.current?.getBoundingClientRect()
-    if (!r || (!d.items.length && !d.sheet.enabled)) {
+    if (!r || (!d.items.length && !d.notes.length && !d.sheet.enabled)) {
       setView({ x: 40, y: 40, k: 1 })
       return
     }
@@ -150,12 +172,16 @@ export default function Editor({ armId, loadExample, onToast }: Props) {
       const p = paperBox(d.sheet.size)
       x0 = p.x; y0 = p.y; x1 = p.x + p.w; y1 = p.y + p.h
     }
-    for (const it of d.items) {
-      const b = itemBounds(it, defOf(it))
-      const lp = labelPos(it)
+    const grow = (b: { x: number; y: number; w: number; h: number }) => {
       x0 = Math.min(x0, b.x); y0 = Math.min(y0, b.y)
-      x1 = Math.max(x1, b.x + b.w, lp.x + it.label.length * 9); y1 = Math.max(y1, b.y + b.h)
+      x1 = Math.max(x1, b.x + b.w); y1 = Math.max(y1, b.y + b.h)
     }
+    for (const it of d.items) {
+      grow(itemBounds(it, defOf(it)))
+      const lb = labelBox(it)
+      if (lb) grow(lb)
+    }
+    for (const n of d.notes) grow(noteBounds(n))
     const pad = d.sheet.enabled ? 24 : 60
     const k = Math.min(1.5, Math.max(MIN_ZOOM, Math.min((r.width - pad * 2) / (x1 - x0), (r.height - pad * 2) / (y1 - y0))))
     setView({ k, x: (r.width - (x1 - x0) * k) / 2 - x0 * k, y: (r.height - (y1 - y0) * k) / 2 - y0 * k })
@@ -196,18 +222,20 @@ export default function Editor({ armId, loadExample, onToast }: Props) {
   /* ---------- actions ---------- */
 
   const hasItems = selection.items.length > 0
+  const body = useMemo(() => bodyIds(selection), [selection])
+  const hasBody = body.length > 0
 
   const rotateSelected = useCallback(() => {
     if (armed) return setArmedOrient((o) => nextOrientation(o.rot, o.mirror, 'rot90'))
-    if (selection.items.length) dispatch({ type: 'rotate', ids: selection.items })
-  }, [armed, selection.items])
+    if (hasBody) dispatch({ type: 'rotate', ids: body })
+  }, [armed, hasBody, body])
 
   const flipSelected = useCallback(
     (axis: Axis) => {
       if (armed) return setArmedOrient((o) => nextOrientation(o.rot, o.mirror, axis === 'h' ? 'flipH' : 'flipV'))
-      if (selection.items.length) dispatch({ type: 'flip', ids: selection.items, axis })
+      if (hasBody) dispatch({ type: 'flip', ids: body, axis })
     },
-    [armed, selection.items],
+    [armed, hasBody, body],
   )
 
   const resizeSelected = useCallback(
@@ -219,7 +247,7 @@ export default function Editor({ armId, loadExample, onToast }: Props) {
 
   const deleteSelected = useCallback(() => {
     if (isEmpty(selection)) return
-    dispatch({ type: 'delete', items: selection.items, wires: selection.wires })
+    dispatch({ type: 'delete', items: selection.items, wires: selection.wires, notes: selection.notes })
     setSelection(EMPTY)
   }, [selection])
 
@@ -229,7 +257,14 @@ export default function Editor({ armId, loadExample, onToast }: Props) {
       if (!payload) return false
       clipRef.current = payload
       pasteCount.current = 0
-      if (!quiet) onToast(`Copied ${payload.items.length} ${payload.items.length === 1 ? 'part' : 'parts'}${payload.wires.length ? ` and ${payload.wires.length} ${payload.wires.length === 1 ? 'wire' : 'wires'}` : ''}`)
+      if (!quiet) {
+        const bits = [
+          payload.items.length && `${payload.items.length} ${payload.items.length === 1 ? 'part' : 'parts'}`,
+          payload.notes.length && `${payload.notes.length} ${payload.notes.length === 1 ? 'note' : 'notes'}`,
+          payload.wires.length && `${payload.wires.length} ${payload.wires.length === 1 ? 'wire' : 'wires'}`,
+        ].filter(Boolean)
+        onToast(`Copied ${bits.join(' and ')}`)
+      }
       return true
     },
     [doc, selection, onToast],
@@ -239,7 +274,7 @@ export default function Editor({ armId, loadExample, onToast }: Props) {
     (payload: Payload, offset: number) => {
       const clone = clonePayload(doc, payload, offset, offset)
       dispatch({ type: 'paste', payload: clone })
-      setSelection({ items: clone.items.map((i) => i.id), wires: [] })
+      setSelection({ items: clone.items.map((i) => i.id), wires: [], notes: clone.notes.map((n) => n.id) })
     },
     [doc],
   )
@@ -262,7 +297,7 @@ export default function Editor({ armId, loadExample, onToast }: Props) {
     if (payload) pasteFrom(payload, 40)
   }, [doc, selection, pasteFrom])
 
-  const selectAll = useCallback(() => setSelection({ items: doc.items.map((i) => i.id), wires: doc.wires.map((w) => w.id) }), [doc])
+  const selectAll = useCallback(() => setSelection({ items: doc.items.map((i) => i.id), wires: doc.wires.map((w) => w.id), notes: doc.notes.map((n) => n.id) }), [doc])
 
   const align = useCallback((mode: AlignMode) => dispatch({ type: 'align', ids: selection.items, mode }), [selection.items])
   const distribute = useCallback((axis: Axis) => dispatch({ type: 'distribute', ids: selection.items, axis }), [selection.items])
@@ -271,7 +306,7 @@ export default function Editor({ armId, loadExample, onToast }: Props) {
     const plan = planFit(doc)
     if (!plan.ok) return onToast('That will not fit even on A1. Make the parts smaller first.')
     dispatch({ type: 'fit-sheet', dx: plan.dx, dy: plan.dy, size: plan.size })
-    requestAnimationFrame(() => fit({ ...doc, items: doc.items.map((i) => ({ ...i, x: i.x + plan.dx, y: i.y + plan.dy })), sheet: { ...doc.sheet, size: plan.size } }))
+    requestAnimationFrame(() => fit({ ...doc, items: doc.items.map((i) => ({ ...i, x: i.x + plan.dx, y: i.y + plan.dy })), notes: doc.notes.map((n) => ({ ...n, x: n.x + plan.dx, y: n.y + plan.dy })), sheet: { ...doc.sheet, size: plan.size } }))
   }, [doc, fit, onToast])
 
   const shrinkAndFit = useCallback(() => {
@@ -280,7 +315,7 @@ export default function Editor({ armId, loadExample, onToast }: Props) {
     dispatch({ type: 'scale-all', factor: plan.factor })
     dispatch({ type: 'fit-sheet', dx: plan.plan.dx, dy: plan.plan.dy, size: plan.plan.size })
     const scaled = scaleDrawing(doc, plan.factor)!
-    requestAnimationFrame(() => fit({ ...scaled, items: scaled.items.map((i) => ({ ...i, x: i.x + plan.plan.dx, y: i.y + plan.plan.dy })), sheet: { ...doc.sheet, size: plan.plan.size } }))
+    requestAnimationFrame(() => fit({ ...scaled, items: scaled.items.map((i) => ({ ...i, x: i.x + plan.plan.dx, y: i.y + plan.plan.dy })), notes: scaled.notes.map((n) => ({ ...n, x: n.x + plan.plan.dx, y: n.y + plan.plan.dy })), sheet: { ...doc.sheet, size: plan.plan.size } }))
   }, [doc, fit, onToast])
 
   const scaleAll = useCallback(
@@ -332,6 +367,7 @@ export default function Editor({ armId, loadExample, onToast }: Props) {
       setWiring(null)
       setGhost(null)
       setMarquee(null)
+      setLabelDrag(null)
       setSelection(EMPTY)
     } else if (key === 'delete' || key === 'backspace') {
       e.preventDefault()
@@ -346,12 +382,12 @@ export default function Editor({ armId, loadExample, onToast }: Props) {
       e.preventDefault()
       selectAll()
     } else if (mod && key === 'c') {
-      if (hasItems) {
+      if (hasBody) {
         e.preventDefault()
         copySelected()
       }
     } else if (mod && key === 'x') {
-      if (hasItems) {
+      if (hasBody) {
         e.preventDefault()
         cutSelected()
       }
@@ -371,16 +407,18 @@ export default function Editor({ armId, loadExample, onToast }: Props) {
       setTool('select')
     } else if (key === 'h') {
       setTool('pan')
+    } else if (key === 't') {
+      setTool('text')
     } else if (key === ']' || key === '=' || key === '+') {
       resizeSelected(1)
     } else if (key === '[' || key === '-') {
       resizeSelected(-1)
-    } else if (key.startsWith('arrow') && hasItems) {
+    } else if (key.startsWith('arrow') && hasBody) {
       e.preventDefault()
       const step = e.shiftKey ? 100 : 20
       const dx = key === 'arrowleft' ? -step : key === 'arrowright' ? step : 0
       const dy = key === 'arrowup' ? -step : key === 'arrowdown' ? step : 0
-      dispatch({ type: 'move', ids: selection.items, dx, dy })
+      dispatch({ type: 'move', ids: body, dx, dy })
     }
   }
   useEffect(() => {
@@ -416,6 +454,16 @@ export default function Editor({ armId, loadExample, onToast }: Props) {
       return
     }
 
+    // Text tool: a click on empty canvas starts a new note. Anything else behaves as in the Select tool.
+    if (tool === 'text' && !armed && !kind) {
+      const note: TextNote = { id: uid('n'), x: snap(w.x), y: snap(w.y), text: '', size: 14 }
+      editFocused.current = false
+      setEditing({ note, isNew: true })
+      setSelection(EMPTY)
+      setTool('select')
+      return
+    }
+
     if (kind === 'term') {
       setWiring({
         from: { item: hit!.getAttribute('data-item')!, term: hit!.getAttribute('data-term')! },
@@ -430,25 +478,28 @@ export default function Editor({ armId, loadExample, onToast }: Props) {
       const item: Item = { id: uid('i'), symbolId: def.id, x: at.x, y: at.y, rot: armedOrient.rot, label: nextLabel(doc.items, def) }
       if (armedOrient.mirror) item.mirror = true
       dispatch({ type: 'add', item })
-      setSelection({ items: [item.id], wires: [] })
+      setSelection({ items: [item.id], wires: [], notes: [] })
       return
     }
-    if (kind === 'item') {
+    if (kind === 'label') {
       const id = hit!.getAttribute('data-id')!
-      let items = selection.items
-      let wireIds = selection.wires
-      if (e.shiftKey) items = toggle(items, id)
-      else if (!items.includes(id)) {
-        items = [id]
-        wireIds = []
-      }
-      setSelection({ items, wires: wireIds })
-      if (items.includes(id)) setDrag({ ids: items, start: w, delta: { x: 0, y: 0 }, clickId: id, shift: e.shiftKey })
+      setSelection({ items: [id], wires: [], notes: [] })
+      setLabelDrag({ id, start: w, delta: { x: 0, y: 0 } })
+      return
+    }
+    if (kind === 'item' || kind === 'note') {
+      const id = hit!.getAttribute('data-id')!
+      const list = kind === 'item' ? 'items' : 'notes'
+      let next: Selection = selection
+      if (e.shiftKey) next = { ...selection, [list]: toggle(selection[list], id) }
+      else if (!selection[list].includes(id)) next = { items: [], wires: [], notes: [], [list]: [id] }
+      setSelection(next)
+      if (next[list].includes(id)) setDrag({ ids: bodyIds(next), start: w, delta: { x: 0, y: 0 }, clickId: id, shift: e.shiftKey })
       return
     }
     if (kind === 'wire') {
       const id = hit!.getAttribute('data-id')!
-      setSelection(e.shiftKey ? { items: selection.items, wires: toggle(selection.wires, id) } : { items: [], wires: [id] })
+      setSelection(e.shiftKey ? { ...selection, wires: toggle(selection.wires, id) } : { items: [], wires: [id], notes: [] })
       return
     }
     // Empty canvas: start a box selection (a plain click, with no drag, just clears the selection).
@@ -460,6 +511,9 @@ export default function Editor({ armId, loadExample, onToast }: Props) {
     if (panRef.current) {
       const p = panRef.current
       setView((v) => ({ ...v, x: p.vx + e.clientX - p.sx, y: p.vy + e.clientY - p.sy }))
+    } else if (labelDrag) {
+      const snapTo = (v: number) => Math.round(v / LABEL_SNAP) * LABEL_SNAP + 0
+      setLabelDrag({ ...labelDrag, delta: { x: snapTo(w.x - labelDrag.start.x), y: snapTo(w.y - labelDrag.start.y) } })
     } else if (marquee) {
       const moved = marquee.moved || Math.hypot(e.clientX - marquee.sx, e.clientY - marquee.sy) > DRAG_THRESHOLD
       setMarquee({ ...marquee, to: w, moved })
@@ -492,11 +546,16 @@ export default function Editor({ armId, loadExample, onToast }: Props) {
         const box = normBox(marquee.from, marquee.to)
         const mode = boxMode(marquee.from, marquee.to)
         const items = itemsInBox(doc.items, box, mode)
+        const noteIds = notesInBox(doc.notes, box, mode)
         const wireIds = wiresInBox(wireGeometries(doc), box, mode)
         setSelection(
           marquee.additive
-            ? { items: [...new Set([...selection.items, ...items])], wires: [...new Set([...selection.wires, ...wireIds])] }
-            : { items, wires: wireIds },
+            ? {
+                items: [...new Set([...selection.items, ...items])],
+                wires: [...new Set([...selection.wires, ...wireIds])],
+                notes: [...new Set([...selection.notes, ...noteIds])],
+              }
+            : { items, wires: wireIds, notes: noteIds },
         )
       } else if (!marquee.additive) {
         setSelection(EMPTY)
@@ -505,8 +564,19 @@ export default function Editor({ armId, loadExample, onToast }: Props) {
     }
     if (drag) {
       if (drag.delta.x || drag.delta.y) dispatch({ type: 'move', ids: drag.ids, dx: drag.delta.x, dy: drag.delta.y })
-      else if (!drag.shift && drag.ids.length > 1) setSelection({ items: [drag.clickId], wires: [] }) // click on one of many
+      else if (!drag.shift && drag.ids.length > 1) {
+        // A plain click on one of several selected objects narrows the selection to it.
+        const isNote = doc.notes.some((n) => n.id === drag.clickId)
+        setSelection(isNote ? { items: [], wires: [], notes: [drag.clickId] } : { items: [drag.clickId], wires: [], notes: [] })
+      }
       setDrag(null)
+    }
+    if (labelDrag) {
+      const item = doc.items.find((i) => i.id === labelDrag.id)
+      if (item && (labelDrag.delta.x || labelDrag.delta.y)) {
+        dispatch({ type: 'label-offset', id: item.id, offset: { x: (item.labelOffset?.x ?? 0) + labelDrag.delta.x, y: (item.labelOffset?.y ?? 0) + labelDrag.delta.y } })
+      }
+      setLabelDrag(null)
     }
     if (wiring) {
       const target = nearestTerminal(toWorld(e), wiring.from)
@@ -515,14 +585,50 @@ export default function Editor({ armId, loadExample, onToast }: Props) {
     }
   }
 
+  const onDoubleClick = (e: React.MouseEvent<SVGSVGElement>) => {
+    // While the pointer is captured by the canvas the event target is the canvas itself, so find the note by position.
+    const w = toWorld(e)
+    const pad = 4
+    const note = [...doc.notes].reverse().find((n) => {
+      const b = noteBounds(n)
+      return w.x >= b.x - pad && w.x <= b.x + b.w + pad && w.y >= b.y - pad && w.y <= b.y + b.h + pad
+    })
+    if (!note) return
+    if (noteRot(note) !== 0) return onToast('Rotated text is edited in the panel on the right.')
+    editFocused.current = false
+    setSelection({ items: [], wires: [], notes: [note.id] })
+    setEditing({ note: { ...note }, isNew: false })
+  }
+
+  const finishEdit = useCallback(
+    (commit: boolean) => {
+      if (!editing) return
+      const { note, isNew } = editing
+      setEditing(null)
+      if (!commit) return
+      const text = note.text.replace(/\s+$/g, '')
+      if (isNew) {
+        if (!text.trim()) return
+        dispatch({ type: 'add-note', note: { ...note, text } })
+        setSelection({ items: [], wires: [], notes: [note.id] })
+      } else if (!text.trim()) {
+        dispatch({ type: 'delete', items: [], wires: [], notes: [note.id] })
+        setSelection(EMPTY)
+      } else {
+        dispatch({ type: 'edit-note', id: note.id, patch: { text } })
+      }
+    },
+    [editing],
+  )
+
   /* ---------- export ---------- */
 
   const exportSvg = () => {
-    if (!doc.items.length) return onToast('Nothing to export yet')
+    if (!doc.items.length && !doc.notes.length) return onToast('Nothing to export yet')
     downloadText('muriel-schematic.svg', diagramToSvg(doc).svg)
   }
   const exportPng = async () => {
-    if (!doc.items.length) return onToast('Nothing to export yet')
+    if (!doc.items.length && !doc.notes.length) return onToast('Nothing to export yet')
     try {
       const { svg, width, height } = diagramToSvg(doc, { background: '#ffffff' })
       // Cap the bitmap so an A1 sheet does not ask the browser for a 30-megapixel canvas.
@@ -534,7 +640,7 @@ export default function Editor({ armId, loadExample, onToast }: Props) {
   }
 
   const print = () => {
-    if (!doc.items.length && !doc.sheet.enabled) return onToast('Nothing to print yet')
+    if (!doc.items.length && !doc.notes.length && !doc.sheet.enabled) return onToast('Nothing to print yet')
     const { svg } = diagramToSvg(doc, { background: '#ffffff' })
     if (!printSheet(svg, doc.sheet.size)) onToast('Allow pop-ups to print, or export the SVG instead')
   }
@@ -554,8 +660,9 @@ export default function Editor({ armId, loadExample, onToast }: Props) {
     return routeWire(a, [a.dx, a.dy], { x: snap(wiring.cursor.x), y: snap(wiring.cursor.y) }, null)
   })()
   const marqueeBox = marquee?.moved ? normBox(marquee.from, marquee.to) : null
-  const selCount = selection.items.length + selection.wires.length
+  const selCount = countOf(selection)
   const selectedIsEmpty = isEmpty(selection)
+  const allConflicts = conflictIds.length + conflictNoteIds.length
 
   return (
     <div className="editor">
@@ -588,10 +695,10 @@ export default function Editor({ armId, loadExample, onToast }: Props) {
           <button className="icon-btn" onClick={() => dispatch({ type: 'undo' })} disabled={!hist.past.length} aria-label="Undo" title="Undo (Ctrl+Z)"><UndoIcon /></button>
           <button className="icon-btn" onClick={() => dispatch({ type: 'redo' })} disabled={!hist.future.length} aria-label="Redo" title="Redo (Ctrl+Shift+Z)"><RedoIcon /></button>
           <span className="sep" />
-          <button className="icon-btn" onClick={rotateSelected} disabled={!hasItems && !armed} aria-label="Rotate" title="Rotate (R)"><RotateIcon /></button>
-          <button className="icon-btn" onClick={() => flipSelected('h')} disabled={!hasItems && !armed} aria-label="Flip left-right" title="Flip left-right (F)"><FlipHIcon /></button>
-          <button className="icon-btn" onClick={() => flipSelected('v')} disabled={!hasItems && !armed} aria-label="Flip top-bottom" title="Flip top-bottom (Shift+F)"><FlipVIcon /></button>
-          <button className="icon-btn" onClick={duplicateSelected} disabled={!hasItems} aria-label="Duplicate selected" title="Duplicate (Ctrl+D)"><DuplicateIcon /></button>
+          <button className="icon-btn" onClick={rotateSelected} disabled={!hasBody && !armed} aria-label="Rotate" title="Rotate (R)"><RotateIcon /></button>
+          <button className="icon-btn" onClick={() => flipSelected('h')} disabled={!hasBody && !armed} aria-label="Flip left-right" title="Flip left-right (F)"><FlipHIcon /></button>
+          <button className="icon-btn" onClick={() => flipSelected('v')} disabled={!hasBody && !armed} aria-label="Flip top-bottom" title="Flip top-bottom (Shift+F)"><FlipVIcon /></button>
+          <button className="icon-btn" onClick={duplicateSelected} disabled={!hasBody} aria-label="Duplicate selected" title="Duplicate (Ctrl+D)"><DuplicateIcon /></button>
           <button className="icon-btn" onClick={deleteSelected} disabled={selectedIsEmpty} aria-label="Delete selected" title="Delete (Del)"><TrashIcon /></button>
           <span className="sep" />
           <button className="icon-btn" onClick={() => zoomAt(1 / 1.25)} aria-label="Zoom out" title="Zoom out"><MinusIcon /></button>
@@ -603,14 +710,14 @@ export default function Editor({ armId, loadExample, onToast }: Props) {
             <input type="checkbox" checked={doc.sheet.enabled} onChange={(e) => { dispatch({ type: 'sheet', patch: { enabled: e.target.checked } }); if (e.target.checked) requestAnimationFrame(() => fit({ ...doc, sheet: { ...doc.sheet, enabled: true } })) }} />
             <span>Sheet</span>
           </label>
-          {conflictIds.length > 0 && (
-            <button className="chip-btn" onClick={() => setSelection({ items: conflictIds, wires: [] })} title="Select the parts that are outside the frame or under the title block">
-              <WarnIcon /> {conflictIds.length} off sheet
+          {allConflicts > 0 && (
+            <button className="chip-btn" onClick={() => setSelection({ items: conflictIds, wires: [], notes: conflictNoteIds })} title="Select what is outside the frame or under the title block">
+              <WarnIcon /> {allConflicts} off sheet
             </button>
           )}
           <span className="grow" />
           <button className="btn small" onClick={() => { const ex = dolStarterExample(); dispatch({ type: 'load', doc: ex }); setSelection(EMPTY); requestAnimationFrame(() => fit(ex)) }} aria-label="Load example circuit" title="Load the motor starter example">Example</button>
-          <button className="btn small" onClick={() => { dispatch({ type: 'load', doc: { items: [], wires: [], sheet: doc.sheet } }); setSelection(EMPTY) }} disabled={!doc.items.length}>Clear</button>
+          <button className="btn small" onClick={() => { dispatch({ type: 'load', doc: { items: [], wires: [], notes: [], sheet: doc.sheet } }); setSelection(EMPTY) }} disabled={!doc.items.length && !doc.notes.length}>Clear</button>
           <button className="icon-btn" onClick={print} aria-label="Print or save as PDF" title="Print / save as PDF"><PrintIcon /></button>
           <button className="btn small" onClick={exportSvg} aria-label="Export SVG" title="Export as SVG">SVG</button>
           <button className="btn small primary" onClick={exportPng} aria-label="Export PNG" title="Export as PNG">PNG</button>
@@ -619,17 +726,19 @@ export default function Editor({ armId, loadExample, onToast }: Props) {
         <div className="stage-body">
           <nav className="tool-rail" aria-label="Tools">
             <button className="icon-btn" aria-pressed={tool === 'select'} onClick={() => setTool('select')} aria-label="Select tool" title="Select (V). Drag empty space for a selection box"><CursorIcon /></button>
+            <button className="icon-btn" aria-pressed={tool === 'text'} onClick={() => setTool('text')} aria-label="Text tool" title="Text (T). Click the canvas, type, then click away"><TextIcon /></button>
             <button className="icon-btn" aria-pressed={tool === 'pan'} onClick={() => setTool('pan')} aria-label="Pan tool" title="Pan (H). Or hold Space, or use the middle mouse button"><HandIcon /></button>
           </nav>
 
           <div className="canvas-wrap">
             <svg
               ref={svgRef}
-              className={`canvas${armed ? ' is-armed' : ''}${wiring ? ' is-wiring' : ''}${panMode ? ' is-pan' : ''}${panning ? ' is-panning' : ''}`}
+              className={`canvas${armed ? ' is-armed' : ''}${wiring ? ' is-wiring' : ''}${panMode ? ' is-pan' : ''}${tool === 'text' ? ' is-text' : ''}${panning ? ' is-panning' : ''}`}
               onPointerDown={onPointerDown}
               onPointerMove={onPointerMove}
               onPointerUp={onPointerUp}
               onPointerLeave={() => { setGhost(null); setGuides({}) }}
+              onDoubleClick={onDoubleClick}
               onAuxClick={(e) => e.preventDefault()}
               aria-label="Schematic canvas"
               role="application"
@@ -671,15 +780,41 @@ export default function Editor({ armId, loadExample, onToast }: Props) {
                     return <rect key={it.id} className="conflict-box" x={b.x - 6} y={b.y - 6} width={b.w + 12} height={b.h + 12} rx="6" />
                   })}
 
+                {shown.notes
+                  .filter((n) => conflictNoteIds.includes(n.id))
+                  .map((n) => {
+                    const b = noteBounds(n)
+                    return <rect key={n.id} className="conflict-box" x={b.x - 4} y={b.y - 4} width={b.w + 8} height={b.h + 8} rx="4" />
+                  })}
+
                 {selBounds.map(({ id, b }) => (
                   <rect key={id} className="sel-box" x={b.x - 6} y={b.y - 6} width={b.w + 12} height={b.h + 12} rx="6" />
                 ))}
+                {selectedNotes.map((n) => {
+                  const b = noteBounds(n)
+                  return <rect key={n.id} className="sel-box" x={b.x - 4} y={b.y - 4} width={b.w + 8} height={b.h + 8} rx="4" />
+                })}
+
+                {shown.items.map((it) => {
+                  const lb = labelBox(it)
+                  if (!lb) return null
+                  const p = labelPos(it)
+                  return (
+                    <g key={`lbl-${it.id}`} className="label-block">
+                      <rect className="label-hit" data-kind="label" data-id={it.id} x={lb.x} y={lb.y} width={lb.w} height={lb.h} rx="3" />
+                      {labelLines(it).map((l, i) => (
+                        <text key={i} className={`item-label ${l.kind}`} x={p.x} y={p.y + i * LABEL_LINE_H}>
+                          {l.text}
+                        </text>
+                      ))}
+                    </g>
+                  )
+                })}
 
                 {shown.items.map((it) => {
                   const def = defOf(it)
                   const pv = pivotOf(def)
                   const k = itemScale(it)
-                  const lp = labelPos(it)
                   return (
                     <g key={it.id}>
                       <g
@@ -691,14 +826,28 @@ export default function Editor({ armId, loadExample, onToast }: Props) {
                         <rect className="item-hit" x={-4} y={-4} width={def.width * k + 8} height={def.height * k + 8} />
                         <GlyphBody def={def} scale={k} mirror={itemMirror(it)} />
                       </g>
-                      {it.label && (
-                        <text className="item-label" x={lp.x} y={lp.y}>
-                          {it.label}
-                        </text>
-                      )}
                     </g>
                   )
                 })}
+
+                {shown.notes
+                  .filter((n) => !(editing && !editing.isNew && editing.note.id === n.id))
+                  .map((n) => {
+                    const box = noteLocalBox(n)
+                    const rot = noteRot(n)
+                    return (
+                      <g key={n.id} className="note" data-kind="note" data-id={n.id} transform={`translate(${n.x} ${n.y})${rot ? ` rotate(${rot})` : ''}`}>
+                        <rect className="note-hit" x={box.x - 4} y={box.y - 4} width={box.w + 8} height={box.h + 8} />
+                        <text className="note-text" fontSize={n.size} fontWeight={n.bold ? 700 : 400} textAnchor={n.align ?? 'start'}>
+                          {noteLines(n).map((line, i) => (
+                            <tspan key={i} x={0} dy={i === 0 ? 0 : n.size * NOTE_LINE}>
+                              {line || '\u00a0'}
+                            </tspan>
+                          ))}
+                        </text>
+                      </g>
+                    )
+                  })}
 
                 {dots.map((p, i) => (
                   <circle key={i} className="junction" cx={p.x} cy={p.y} r={4} />
@@ -748,7 +897,7 @@ export default function Editor({ armId, loadExample, onToast }: Props) {
               </g>
             </svg>
 
-            {!doc.items.length && !armed && (
+            {!doc.items.length && !doc.notes.length && !armed && !editing && (
               <div className="canvas-empty">
                 <p><strong>Empty canvas</strong></p>
                 <p className="muted">Pick a symbol on the left, then click here to place it. Drag from one terminal dot to another to draw a wire.</p>
@@ -759,7 +908,41 @@ export default function Editor({ armId, loadExample, onToast }: Props) {
                 Placing <strong>{armedDef.name}</strong>. Click to place, <kbd>R</kbd> rotate, <kbd>F</kbd> flip, <kbd>Esc</kbd> stop
               </div>
             )}
-            {!armedDef && selCount > 1 && (
+            {tool === 'text' && !armedDef && (
+              <div className="canvas-hint" role="status">
+                Click where the text should go. <kbd>Esc</kbd> to cancel
+              </div>
+            )}
+            {editing && (
+              <textarea
+                className="note-editor"
+                aria-label="Note text"
+                value={editing.note.text}
+                rows={Math.max(1, noteLines(editing.note).length)}
+                onChange={(e) => setEditing({ ...editing, note: { ...editing.note, text: e.target.value } })}
+                onFocus={() => (editFocused.current = true)}
+                onBlur={() => editFocused.current && finishEdit(true)}
+                onKeyDown={(e) => {
+                  e.stopPropagation()
+                  if (e.key === 'Escape') finishEdit(false)
+                  else if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) finishEdit(true)
+                }}
+                ref={(el) => {
+                  if (el && !editFocused.current) window.setTimeout(() => { el.focus(); el.select() }, 30)
+                }}
+                style={{
+                  left: view.x + editing.note.x * view.k,
+                  top: view.y + (editing.note.y - editing.note.size) * view.k,
+                  fontSize: editing.note.size * view.k,
+                  fontWeight: editing.note.bold ? 700 : 400,
+                  lineHeight: NOTE_LINE,
+                  textAlign: editing.note.align === 'middle' ? 'center' : editing.note.align === 'end' ? 'right' : 'left',
+                  width: Math.max(140, Math.max(...noteLines(editing.note).map((l) => l.length), 6) * editing.note.size * 0.62 * view.k + 24),
+                  transform: editing.note.align === 'middle' ? 'translateX(-50%)' : editing.note.align === 'end' ? 'translateX(-100%)' : undefined,
+                }}
+              />
+            )}
+            {!armedDef && !editing && selCount > 1 && (
               <div className="canvas-hint" role="status">
                 {selCount} selected
               </div>
@@ -774,8 +957,11 @@ export default function Editor({ armId, loadExample, onToast }: Props) {
           selection={selection}
           fitPlan={fitPlan}
           shrinkPlan={shrinkPlan}
-          conflictCount={conflictIds.length}
+          conflictCount={allConflicts}
           onLabel={(id, label) => dispatch({ type: 'label', id, label })}
+          onProps={(id, patch) => dispatch({ type: 'props', id, patch })}
+          onResetLabel={(id) => dispatch({ type: 'label-offset', id, offset: null })}
+          onNote={(id, patch) => dispatch({ type: 'edit-note', id, patch })}
           onSheet={(patch) => dispatch({ type: 'sheet', patch })}
           onResize={resizeSelected}
           onSetScale={(scale) => hasItems && dispatch({ type: 'set-scale', ids: selection.items, scale })}

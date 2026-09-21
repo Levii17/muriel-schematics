@@ -1,8 +1,9 @@
 import { getSymbol } from '../data'
 import { bodyToSvg, escapeXml, styledGroup } from '../lib/svg'
-import type { Doc, Pt } from './model'
+import { LABEL_LINE_H, LABEL_STYLE, labelBox, labelLines, labelPos } from './labels'
+import type { Doc, Pt, TextNote } from './model'
 import { PAPER, sheetPrims } from './sheet'
-import { defOf, itemBounds, itemMirror, itemScale, pivotOf, pointsToPath, symbolBody, terminalWorld, routeWire } from './model'
+import { NOTE_LINE, defOf, itemBounds, itemMirror, itemScale, noteBounds, noteLines, noteRot, pivotOf, pointsToPath, symbolBody, terminalWorld, routeWire } from './model'
 
 export interface WireGeometry {
   id: string
@@ -43,10 +44,29 @@ export function junctions(doc: Doc): Pt[] {
   return pts
 }
 
-/** Where an item's label sits: just right of its bounding box. */
-export function labelPos(item: Doc['items'][number]): Pt {
-  const b = itemBounds(item, defOf(item))
-  return { x: b.x + b.w + 10, y: b.y + 16 }
+/** SVG for one part's label block: reference, then rating, then description. */
+function labelSvg(item: Doc['items'][number], ink: string): string {
+  const p = labelPos(item)
+  return labelLines(item)
+    .map((l, i) => {
+      const style = LABEL_STYLE[l.kind]
+      const weight = l.kind === 'ref' ? 600 : l.kind === 'rating' ? 500 : 400
+      const opacity = l.kind === 'desc' ? ' opacity="0.7"' : ''
+      return `<text x="${p.x}" y="${p.y + i * LABEL_LINE_H}" font-size="${style.size}" font-weight="${weight}" fill="${ink}" stroke="none"${opacity}>${escapeXml(l.text)}</text>`
+    })
+    .join('')
+}
+
+/** SVG for one free-text note. Empty lines get a no-break space so they keep their height. */
+export function noteSvg(n: TextNote, ink: string): string {
+  const spans = noteLines(n)
+    .map((line, i) => `<tspan x="0" dy="${i === 0 ? 0 : Math.round(n.size * NOTE_LINE * 100) / 100}">${escapeXml(line) || '&#160;'}</tspan>`)
+    .join('')
+  const rot = noteRot(n)
+  return (
+    `<text transform="translate(${n.x} ${n.y})${rot ? ` rotate(${rot})` : ''}" font-size="${n.size}" font-weight="${n.bold ? 700 : 400}" ` +
+    `text-anchor="${n.align ?? 'start'}" fill="${ink}" stroke="none">${spans}</text>`
+  )
 }
 
 export function diagramToSvg(doc: Doc, opts: { ink?: string; background?: string | null } = {}) {
@@ -63,14 +83,18 @@ export function diagramToSvg(doc: Doc, opts: { ink?: string; background?: string
     let minY = Infinity
     let maxX = -Infinity
     let maxY = -Infinity
-    for (const item of doc.items) {
-      const b = itemBounds(item, defOf(item))
-      const lp = labelPos(item)
+    const grow = (b: { x: number; y: number; w: number; h: number }) => {
       minX = Math.min(minX, b.x)
       minY = Math.min(minY, b.y)
-      maxX = Math.max(maxX, b.x + b.w, lp.x + item.label.length * 8)
+      maxX = Math.max(maxX, b.x + b.w)
       maxY = Math.max(maxY, b.y + b.h)
     }
+    for (const item of doc.items) {
+      grow(itemBounds(item, defOf(item)))
+      const lb = labelBox(item)
+      if (lb) grow(lb)
+    }
+    for (const n of doc.notes) grow(noteBounds(n))
     if (!isFinite(minX)) {
       minX = minY = 0
       maxX = maxY = 200
@@ -96,13 +120,8 @@ export function diagramToSvg(doc: Doc, opts: { ink?: string; background?: string
       return `<g transform="translate(${item.x} ${item.y}) rotate(${item.rot}) translate(${-pv.x * k} ${-pv.y * k})">${bodyToSvg(symbolBody(def, k, itemMirror(item)))}</g>`
     })
     .join('')
-  const labels = doc.items
-    .filter((i) => i.label)
-    .map((i) => {
-      const p = labelPos(i)
-      return `<text x="${p.x}" y="${p.y}" font-size="14" font-weight="600" fill="${ink}" stroke="none">${escapeXml(i.label)}</text>`
-    })
-    .join('')
+  const labels = doc.items.map((i) => labelSvg(i, ink)).join('')
+  const notes = doc.notes.map((n) => noteSvg(n, ink)).join('')
   const paper = sheetOn ? `<rect x="0" y="0" width="${w}" height="${h}" fill="#ffffff" stroke="none"/>` : ''
   const sheet = sheetOn ? bodyToSvg(sheetPrims(doc.sheet)) : ''
   const bg = !sheetOn && background ? `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${background}"/>` : ''
@@ -112,7 +131,7 @@ export function diagramToSvg(doc: Doc, opts: { ink?: string; background?: string
     `<svg xmlns="http://www.w3.org/2000/svg" ${size} viewBox="${x} ${y} ${w} ${h}">` +
     bg +
     paper +
-    styledGroup(sheet + wires + items + dots + labels, ink) +
+    styledGroup(sheet + wires + items + dots + labels + notes, ink) +
     `</svg>`
   return { svg, width: w, height: h }
 }

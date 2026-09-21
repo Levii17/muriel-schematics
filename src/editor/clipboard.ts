@@ -21,7 +21,7 @@ export function copyPayload(doc: Doc, sel: Selection): Payload | null {
   const wires = doc.wires.filter((w) => ids.has(w.a.item) && ids.has(w.b.item))
   return {
     items: items.map((i) => ({ ...i, ...(i.labelOffset ? { labelOffset: { ...i.labelOffset } } : {}) })),
-    wires: wires.map((w) => ({ ...w, a: { ...w.a }, b: { ...w.b } })),
+    wires: wires.map((w) => ({ ...w, a: { ...w.a }, b: { ...w.b }, ...(w.via ? { via: w.via.map((v) => ({ ...v })) } : {}), ...(w.style ? { style: { ...w.style } } : {}) })),
     notes: notes.map((n) => ({ ...n })),
   }
 }
@@ -51,7 +51,10 @@ export function clonePayload(doc: Doc, payload: Payload, dx: number, dy: number)
   const wires: Wire[] = payload.wires.flatMap((w) => {
     const a = idMap.get(w.a.item)
     const b = idMap.get(w.b.item)
-    return a && b ? [{ id: uid('w'), a: { item: a, term: w.a.term }, b: { item: b, term: w.b.term } }] : []
+    if (!a || !b) return []
+    const copy: Wire = { ...w, id: uid('w'), a: { item: a, term: w.a.term }, b: { item: b, term: w.b.term } }
+    if (w.via) copy.via = w.via.map((v) => ({ x: v.x + dx, y: v.y + dy }))
+    return [copy]
   })
   const notes: TextNote[] = payload.notes.map((n) => ({ ...n, id: uid('n'), x: n.x + dx, y: n.y + dy }))
   return { items, wires, notes }

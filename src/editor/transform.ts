@@ -1,4 +1,4 @@
-import type { Item, Pt, Rot, TextNote } from './model'
+import type { Item, Pt, Rot, TextNote, Wire } from './model'
 import { anchorOffset, defOf, itemBounds, itemMirror, itemScale, noteBounds, noteRot, snap } from './model'
 
 export type Transform = 'rot90' | 'flipH' | 'flipV'
@@ -7,6 +7,8 @@ export type Transform = 'rot90' | 'flipH' | 'flipV'
 export interface Content {
   items: Item[]
   notes: TextNote[]
+  /** When given, waypoints of wires between two moved parts travel with them. */
+  wires?: Wire[]
 }
 
 /**
@@ -78,7 +80,14 @@ export function transformDoc(content: Content, ids: string[], kind: Transform): 
   const moved = (x: number, y: number): Pt =>
     kind === 'rot90' ? { x: c.x - (y - c.y), y: c.y + (x - c.x) } : kind === 'flipH' ? { x: 2 * c.x - x, y } : { x, y: 2 * c.y - y }
 
+  const wires = content.wires?.map((w) =>
+    w.via && ids.includes(w.a.item) && ids.includes(w.b.item)
+      ? { ...w, via: w.via.map((v) => { const p = moved(v.x, v.y); return { x: clean(p.x), y: clean(p.y) } }) }
+      : w,
+  )
+
   return {
+    ...(wires ? { wires } : {}),
     items: content.items.map((it) => {
       if (!ids.includes(it.id)) return it
       let { x, y } = moved(it.x, it.y)

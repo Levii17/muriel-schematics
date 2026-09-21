@@ -47,10 +47,23 @@ export interface Endpoint {
   item: string
   term: string
 }
+/** How a wire is drawn. Absent fields mean the default: solid, normal weight. */
+export interface WireStyle {
+  dash?: 'dashed' | 'dotted' | 'dashdot'
+  /** 1 = thin, 3 = thick; absent = 2. */
+  width?: 1 | 3
+}
+
 export interface Wire {
   id: string
   a: Endpoint
   b: Endpoint
+  /**
+   * Waypoints the wire passes through, in order from `a` to `b`. Absent means the wire routes itself.
+   * The editor supplies the right-angle turns between waypoints.
+   */
+  via?: Pt[]
+  style?: WireStyle
 }
 export interface Doc {
   items: Item[]
@@ -136,7 +149,7 @@ export function rotateVec(x: number, y: number, rot: Rot): [number, number] {
   }
 }
 
-const DIRS: Record<Dir, [number, number]> = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] }
+const DIRS: Record<Dir, [number, number]> = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0], any: [0, 0] }
 
 /** World-space position and outward direction of one terminal of a placed item. */
 export function terminalWorld(item: Item, def: SymbolDef, terminalId: string) {
@@ -153,11 +166,12 @@ export function terminalWorld(item: Item, def: SymbolDef, terminalId: string) {
 export function itemBounds(item: Item, def: SymbolDef): Rect {
   const pv = pivotOf(def)
   const k = itemScale(item)
+  const bb = def.bounds ?? { x: 0, y: 0, w: def.width, h: def.height }
   const corners: [number, number][] = [
-    [0, 0],
-    [def.width, 0],
-    [def.width, def.height],
-    [0, def.height],
+    [bb.x, bb.y],
+    [bb.x + bb.w, bb.y],
+    [bb.x + bb.w, bb.y + bb.h],
+    [bb.x, bb.y + bb.h],
   ]
   const mx = itemMirror(item) ? -1 : 1
   const pts = corners.map(([cx, cy]) => rotateVec(mx * (cx - pv.x) * k, (cy - pv.y) * k, item.rot))
@@ -286,11 +300,11 @@ export function routeWire(p1: Pt, d1: [number, number], p2: Pt, d2: [number, num
     let cost = bends(pts) * 1000 + length(pts)
     // Leaving sideways runs the wire along the row of neighbouring terminals (it reads as a short circuit),
     // so it costs more than a bend. Arriving sideways is fine, e.g. dropping onto the end of a horizontal lead.
-    if (first.x * d1[0] + first.y * d1[1] <= EPS) cost += 1500
+    if ((d1[0] !== 0 || d1[1] !== 0) && first.x * d1[0] + first.y * d1[1] <= EPS) cost += 1500
     if (d2) {
       const n = pts.length
       const behind = { x: pts[n - 2].x - pts[n - 1].x, y: pts[n - 2].y - pts[n - 1].y }
-      if (behind.x * d2[0] + behind.y * d2[1] <= EPS) cost += 300
+      if ((d2[0] !== 0 || d2[1] !== 0) && behind.x * d2[0] + behind.y * d2[1] <= EPS) cost += 300
     }
     if (cost < bestCost) {
       best = pts
@@ -358,8 +372,10 @@ export function scaleDrawing(doc: Doc, factor: number): Doc | null {
   const r = (v: number) => Math.round(v * 100) / 100
   // Text follows the drawing: its size moves to the nearest preset, so it never becomes unreadably small or huge.
   const nearestSize = (v: number) => NOTE_SIZES.reduce((best, s) => (Math.abs(s - v) < Math.abs(best - v) ? s : best), NOTE_SIZES[0])
+  const scaleVia = (v: Pt) => ({ x: r(ax + (v.x - ax) * factor), y: r(ay + (v.y - ay) * factor) })
   return {
     ...doc,
+    wires: doc.wires.map((w) => (w.via ? { ...w, via: w.via.map(scaleVia) } : w)),
     items: doc.items.map((it, n) => ({
       ...it,
       scale: next[n] === 1 ? undefined : next[n],

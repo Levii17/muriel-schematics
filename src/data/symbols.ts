@@ -650,6 +650,24 @@ const passives: SymbolDef[] = [
   },
 ]
 
+/* ---- Connections ---- */
+
+const junction: SymbolDef = {
+  id: 'junction',
+  name: 'Junction',
+  category: 'connect',
+  reference: '',
+  summary: 'A point where three or more wires meet, drawn as a solid dot.',
+  usage:
+    'Wires dropped onto another wire create one automatically. Place one by hand to branch a wire at an exact spot. Hold Alt and drag from the dot to start a wire from it.',
+  tags: ['junction', 'node', 'tee', 'tap', 'branch', 'connection', 'dot', 'join'],
+  width: 40,
+  height: 40,
+  bounds: { x: 12, y: 12, w: 16, h: 16 },
+  body: [circle(20, 20, 4.5, true)],
+  terminals: [term('1', '', 'Connection point', 20, 20, 'io', 'any')],
+}
+
 export const SYMBOLS: SymbolDef[] = [
   ...breakers,
   ...isolators,
@@ -669,4 +687,5 @@ export const SYMBOLS: SymbolDef[] = [
   earth,
   ...meters,
   ...passives,
+  junction,
 ]

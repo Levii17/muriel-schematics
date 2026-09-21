@@ -1,10 +1,12 @@
 import { SCALES } from '../data/scale'
-import type { Doc, Endpoint, Item, Pt, TextNote } from './model'
+import type { Doc, Endpoint, Item, Pt, TextNote, WireStyle } from './model'
 import type { AlignMode, Axis } from './align'
 import { alignMoves, distributeMoves } from './align'
 import type { Payload } from './clipboard'
 import { anchorOffset, defOf, emptyDoc, itemMirror, itemScale, scaleDrawing, stepScale, uid } from './model'
 import { transformDoc } from './transform'
+import { shiftWires, tapWire } from './wires'
+import type { TapRequest } from './wires'
 import type { PaperSize, TitleFields } from './sheet'
 
 export interface History {
@@ -22,6 +24,9 @@ export type Action =
   | { type: 'distribute'; ids: string[]; axis: Axis }
   | { type: 'paste'; payload: Payload }
   | { type: 'delete'; items: string[]; wires: string[]; notes?: string[] }
+  | { type: 'wire-route'; id: string; via: Pt[] | null }
+  | { type: 'wire-style'; ids: string[]; patch: { dash?: WireStyle['dash'] | null; width?: 1 | 2 | 3 | null } }
+  | { type: 'tap'; request: TapRequest }
   | { type: 'add-note'; note: TextNote }
   | { type: 'edit-note'; id: string; patch: Partial<Omit<TextNote, 'id'>> }
   | { type: 'props'; id: string; patch: Partial<Pick<Item, 'rating' | 'description' | 'partNo'>> }
@@ -87,6 +92,7 @@ function apply(doc: Doc, action: Action): Doc {
         ...doc,
         items: doc.items.map((i) => (action.ids.includes(i.id) ? { ...i, x: i.x + action.dx, y: i.y + action.dy } : i)),
         notes: doc.notes.map((n) => (action.ids.includes(n.id) ? { ...n, x: n.x + action.dx, y: n.y + action.dy } : n)),
+        wires: shiftWires(doc.wires, action.ids, action.dx, action.dy),
       }
     case 'rotate':
       return { ...doc, ...transformDoc(doc, action.ids, 'rot90') }
@@ -103,6 +109,44 @@ function apply(doc: Doc, action: Action): Doc {
         wires: [...doc.wires, ...action.payload.wires],
         notes: [...doc.notes, ...action.payload.notes],
       }
+    case 'wire-route': {
+      let changed = false
+      const wires = doc.wires.map((w) => {
+        if (w.id !== action.id) return w
+        const via = action.via?.length ? action.via.map((p) => ({ x: p.x, y: p.y })) : undefined
+        if (JSON.stringify(via) === JSON.stringify(w.via)) return w
+        changed = true
+        const next = { ...w }
+        if (via) next.via = via
+        else delete next.via
+        return next
+      })
+      return changed ? { ...doc, wires } : doc
+    }
+    case 'wire-style': {
+      let changed = false
+      const wires = doc.wires.map((w) => {
+        if (!action.ids.includes(w.id)) return w
+        const style: WireStyle = { ...w.style }
+        if ('dash' in action.patch) {
+          if (action.patch.dash) style.dash = action.patch.dash
+          else delete style.dash
+        }
+        if ('width' in action.patch) {
+          if (action.patch.width === 1 || action.patch.width === 3) style.width = action.patch.width
+          else delete style.width
+        }
+        if (JSON.stringify(style) === JSON.stringify(w.style ?? {})) return w
+        changed = true
+        const next = { ...w }
+        if (Object.keys(style).length) next.style = style
+        else delete next.style
+        return next
+      })
+      return changed ? { ...doc, wires } : doc
+    }
+    case 'tap':
+      return tapWire(doc, action.request) ?? doc
     case 'add-note':
       return { ...doc, notes: [...doc.notes, action.note] }
     case 'edit-note': {
@@ -163,6 +207,7 @@ function apply(doc: Doc, action: Action): Doc {
         ...doc,
         items: doc.items.map((i) => ({ ...i, x: i.x + action.dx, y: i.y + action.dy })),
         notes: doc.notes.map((n) => ({ ...n, x: n.x + action.dx, y: n.y + action.dy })),
+        wires: shiftWires(doc.wires, doc.items.map((i) => i.id), action.dx, action.dy),
         sheet: { ...doc.sheet, size: action.size },
       }
     case 'delete-items':

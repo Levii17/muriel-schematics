@@ -56,6 +56,7 @@ const labelAnchor = {
   down: { x: 0, y: 19, anchor: 'middle' },
   left: { x: -11, y: 4, anchor: 'end' },
   right: { x: 11, y: 4, anchor: 'start' },
+  any: { x: 0, y: -11, anchor: 'middle' },
 } as const
 
 /** Coloured terminal dots with labels, drawn in symbol space. */

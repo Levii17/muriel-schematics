@@ -14,6 +14,10 @@ A searchable library of IEC-style electrical schematic symbols, plus a small in-
 
 An exported A3 sheet is in [`docs/example-sheet.svg`](docs/example-sheet.svg).
 
+Hand-routing a wire: its handles after sliding the vertical leg sideways.
+
+![Wire handles](docs/wire-editing.png)
+
 Resizing in practice: a 125% breaker and a 50% variable resistor whose leads land exactly on poles T1 and T2, so both wires run straight.
 
 ![Resistor bridging two poles](docs/resize-example.png)
@@ -30,6 +34,9 @@ Resizing in practice: a 125% breaker and a 50% variable resistor whose leads lan
 **Editor**
 - Click a symbol in the palette, click the canvas to place it; everything snaps to a 20 px grid.
 - Drag from one terminal to another to draw an orthogonal wire. Wires re-route as parts move.
+- **Junctions:** drop a wire onto the middle of another wire and it joins there. A junction dot is created on the spot, the wire you hit is split in two around it (keeping its shape and style), and the whole thing is one undo step. You can also place a Junction from the Connections category and hold `Alt` while dragging from it to start a wire.
+- **Hand-routing:** select a wire to see its handles. Drag a round handle to slide that stretch of wire sideways (a short stub is kept at a terminal so it can still jog), drag a square handle to move a bend, double-click a square handle to remove it, or use Reset route. Bends snap to a 10 px grid and line up with nearby terminals, and they travel with the wire when both of its parts move, turn, flip, scale or are pasted.
+- **Wire styles:** solid, dashed, dotted or dash-dot, in thin, normal or thick, for one wire or several at once. Styles are drawn in exports and kept by junction splits and copies.
 - **Selecting:** drag an empty area for a selection box (left to right selects parts fully inside, right to left selects anything the box touches, like CAD). Shift adds or removes, `Ctrl+A` selects everything. Wires can be selected too, alone or together with parts.
 - **Tools:** a rail on the left has Select (`V`), Text (`T`) and Pan (`H`). You can also pan by holding `Space` while dragging, or with the middle mouse button.
 - **Rotate and reflect** (`R`, `F` left-right, `Shift+F` top-bottom): one part turns about its own centre, several turn as a group so the wires between them keep their shape. Reflection is real geometry rather than a mirrored picture, so text such as "kWh" stays readable and the timer-contact arc flips correctly. Press `R` or `F` while placing a part to orient it before you drop it.
@@ -87,12 +94,12 @@ src/
   lib/        search, SVG serialiser + PNG export, print, hooks (hash router, theme, toast)
   components/ library UI: cards, details drawer, glyph renderer, header
   editor/     model & geometry, history reducer, wire routing, transform (rotate/flip), selection,
-              clipboard, align/distribute, labels and text notes, drawing sheet + title block,
+              clipboard, align/distribute, labels and text notes, wire geometry / junctions / hand-routing, drawing sheet + title block,
               persistence, export, example circuit, Editor and Inspector UI
 public/       favicons, web manifest, brand assets
 ```
 
-`npm test` runs 157 tests covering symbol data integrity, search ranking, terminal positions for every symbol at every size, rotation and reflection, exact group rotate/flip geometry, box selection, clipboard, align and distribute, text notes and part properties (geometry, history, storage, export), symbol scaling (including SVG arcs), orthogonal wire routing, magnetic alignment, the undo/redo reducer, storage validation, sheet and title-block geometry, fit-to-sheet planning, and SVG export.
+`npm test` runs 201 tests covering symbol data integrity, search ranking, terminal positions for every symbol at every size, rotation and reflection, exact group rotate/flip geometry, box selection, clipboard, align and distribute, text notes and part properties (geometry, history, storage, export), wire routing through waypoints, junction splitting, segment sliding, wire styles, symbol scaling (including SVG arcs), orthogonal wire routing, magnetic alignment, the undo/redo reducer, storage validation, sheet and title-block geometry, fit-to-sheet planning, and SVG export.
 
 ## Run it
 

@@ -7,7 +7,7 @@ import {
 import { SCALES } from '../data/scale'
 import type { AlignMode, Axis } from './align'
 import type { FitPlan } from './checks'
-import type { Doc, Endpoint, Item, TextNote } from './model'
+import type { Doc, Endpoint, Item, TextNote, Wire, WireStyle } from './model'
 import { NOTE_SIZES, defOf, itemScale, noteRot, scaleDrawing } from './model'
 import type { Selection } from './select'
 import { FIELD_DEFS, PAPER_ORDER } from './sheet'
@@ -22,6 +22,8 @@ export interface InspectorProps {
   onLabel: (id: string, label: string) => void
   onProps: (id: string, patch: Partial<Pick<Item, 'rating' | 'description' | 'partNo'>>) => void
   onResetLabel: (id: string) => void
+  onWireStyle: (patch: { dash?: WireStyle['dash'] | null; width?: 1 | 2 | 3 | null }) => void
+  onResetRoute: (id: string) => void
   onNote: (id: string, patch: Partial<Omit<TextNote, 'id'>>) => void
   onSheet: (patch: { enabled?: boolean; size?: PaperSize; fields?: Partial<TitleFields> }) => void
   onResize: (dir: 1 | -1) => void
@@ -82,23 +84,13 @@ export function Inspector(p: InspectorProps) {
   const items = doc.items.filter((i) => selection.items.includes(i.id))
   const wires = doc.wires.filter((w) => selection.wires.includes(w.id))
   const notes = doc.notes.filter((n) => selection.notes.includes(n.id))
-  const name = (e: Endpoint) => `${doc.items.find((i) => i.id === e.item)?.label || 'part'}·${e.term}`
+  const name = (e: Endpoint) => {
+    const it = doc.items.find((i) => i.id === e.item)
+    return it?.symbolId === 'junction' ? 'junction' : `${it?.label || 'part'}·${e.term}`
+  }
 
   if (items.length === 0 && notes.length === 0 && wires.length > 0) {
-    return (
-      <div className="inspector-body">
-        <p className="eyebrow">Selected</p>
-        {wires.length === 1 ? (
-          <>
-            <h2>Wire</h2>
-            <p className="mono">{name(wires[0].a)} → {name(wires[0].b)}</p>
-          </>
-        ) : (
-          <h2>{wires.length} wires</h2>
-        )}
-        <button className="btn danger" onClick={p.onDelete}><TrashIcon /> Delete {wires.length === 1 ? 'wire' : 'wires'}</button>
-      </div>
-    )
+    return <WireFields wires={wires} ends={wires.length === 1 ? `${name(wires[0].a)} → ${name(wires[0].b)}` : ''} onStyle={p.onWireStyle} onReset={p.onResetRoute} onDelete={p.onDelete} />
   }
 
   if (items.length === 1 && notes.length === 0) {
@@ -172,6 +164,9 @@ export function Inspector(p: InspectorProps) {
       <dl className="shortcuts">
         <dt><kbd>V</kbd> <kbd>H</kbd> <kbd>T</kbd></dt><dd>Select / Pan / Text tool</dd>
         <dt>Double-click text</dt><dd>Edit it in place</dd>
+        <dt>Drag onto a wire</dt><dd>Join a wire to the middle of another (adds a junction)</dd>
+        <dt>Wire handles</dt><dd>Round: slide a stretch sideways. Square: move a bend</dd>
+        <dt><kbd>Alt</kbd>+drag junction</dt><dd>Start a wire from a junction</dd>
         <dt><kbd>Space</kbd>+drag</dt><dd>Pan (also middle mouse)</dd>
         <dt>Drag empty area</dt><dd>Box select: left to right = inside only, right to left = touching</dd>
         <dt><kbd>Shift</kbd>+click</dt><dd>Add or remove from selection</dd>
@@ -378,6 +373,61 @@ function NoteFields({
         <button className="btn small danger" onClick={onDelete} title="Delete (Del)"><TrashIcon /> Delete</button>
       </div>
       <p className="muted small">Double-click text on the canvas to edit it in place.</p>
+    </div>
+  )
+}
+
+const DASH_OPTIONS: { value: WireStyle['dash'] | null; label: string }[] = [
+  { value: null, label: 'Solid' },
+  { value: 'dashed', label: 'Dashed' },
+  { value: 'dotted', label: 'Dotted' },
+  { value: 'dashdot', label: 'Dash-dot' },
+]
+const WIDTH_OPTIONS: { value: 1 | 2 | 3; label: string }[] = [
+  { value: 1, label: 'Thin' },
+  { value: 2, label: 'Normal' },
+  { value: 3, label: 'Thick' },
+]
+
+function WireFields({
+  wires, ends, onStyle, onReset, onDelete,
+}: { wires: Wire[]; ends: string; onStyle: InspectorProps['onWireStyle']; onReset: (id: string) => void; onDelete: () => void }) {
+  const dash = wires.every((w) => (w.style?.dash ?? null) === (wires[0].style?.dash ?? null)) ? (wires[0].style?.dash ?? null) : undefined
+  const width = wires.every((w) => (w.style?.width ?? 2) === (wires[0].style?.width ?? 2)) ? (wires[0].style?.width ?? 2) : undefined
+  const single = wires.length === 1 ? wires[0] : null
+  return (
+    <div className="inspector-body">
+      <p className="eyebrow">Selected</p>
+      <h2>{single ? 'Wire' : `${wires.length} wires`}</h2>
+      {ends && <p className="mono">{ends}</p>}
+      <div className="field">
+        <span>Line</span>
+        <div className="row" role="group" aria-label="Line style">
+          {DASH_OPTIONS.map((o) => (
+            <button key={o.label} className="btn small" aria-pressed={dash === o.value} onClick={() => onStyle({ dash: o.value })}>{o.label}</button>
+          ))}
+        </div>
+      </div>
+      <div className="field">
+        <span>Weight</span>
+        <div className="row" role="group" aria-label="Line weight">
+          {WIDTH_OPTIONS.map((o) => (
+            <button key={o.label} className="btn small" aria-pressed={width === o.value} onClick={() => onStyle({ width: o.value })}>{o.label}</button>
+          ))}
+        </div>
+      </div>
+      {single && (
+        <>
+          <p className="muted small">
+            {single.via?.length
+              ? `Routed by hand through ${single.via.length} ${single.via.length === 1 ? 'point' : 'points'}.`
+              : 'Routes itself between its two ends.'}
+          </p>
+          {single.via?.length ? <button className="btn small" onClick={() => onReset(single.id)}>Reset route</button> : null}
+          <p className="muted small">Drag a round handle to slide that stretch of wire sideways, a square handle to move a bend. Double-click a square handle to remove it.</p>
+        </>
+      )}
+      <button className="btn danger" onClick={onDelete}><TrashIcon /> Delete {single ? 'wire' : 'wires'}</button>
     </div>
   )
 }

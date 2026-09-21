@@ -194,3 +194,11 @@
 .select { height: 34px; border-radius: 9px; border: 1px solid var(--line-strong); background: var(--surface-2); color: var(--ink); font: 14px var(--font-sans); padding: 0 8px; width: 100%; }
 .note-bold { align-self: end; height: 34px; }
 .btn[aria-pressed='true'] { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+
+/* wire editing */
+.wire.tap-target { stroke: var(--accent); }
+.tap-dot { fill: var(--accent); stroke: var(--surface); stroke-width: 1.5; pointer-events: none; }
+.handle { stroke: var(--accent); stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+.handle.seg { fill: var(--surface); cursor: copy; }
+.handle.seg:hover { fill: var(--accent-soft); }
+.handle.via { fill: var(--accent); cursor: move; }

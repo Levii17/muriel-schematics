@@ -1,6 +1,6 @@
 import { getSymbol } from '../data'
 import { SCALES } from '../data/scale'
-import type { Doc, TextNote } from './model'
+import type { Doc, TextNote, Wire } from './model'
 import { mergeSheet } from './sheet'
 
 /**
@@ -25,7 +25,7 @@ export function sanitizeDoc(raw: unknown): Doc | null {
     const it = e && byId.get(e.item)
     return !!it && !!getSymbol(it.symbolId)?.terminals.some((t) => t.id === e.term)
   }
-  const wires = r.wires.filter((w) => w && hasTerminal(w.a) && hasTerminal(w.b))
+  const wires = r.wires.filter((w) => w && hasTerminal(w.a) && hasTerminal(w.b)).map(cleanWire)
   for (const i of items) {
     for (const k of ['rating', 'description', 'partNo'] as const) {
       const v = i[k] as unknown
@@ -36,6 +36,30 @@ export function sanitizeDoc(raw: unknown): Doc | null {
     if (o !== undefined && !(o && Number.isFinite(o.x) && Number.isFinite(o.y))) delete i.labelOffset
   }
   return { items, wires, notes: sanitizeNotes((r as { notes?: unknown }).notes), sheet: mergeSheet(r.sheet) }
+}
+
+const DASH_KINDS = ['dashed', 'dotted', 'dashdot']
+const MAX_VIA = 60
+
+/** Keep a wire's waypoints and style only if they are well-formed. */
+function cleanWire(w: Wire): Wire {
+  const { via, style, ...rest } = w as Wire & { via?: unknown; style?: unknown }
+  const out: Wire = { ...rest }
+  if (Array.isArray(via)) {
+    const pts = (via as { x?: unknown; y?: unknown }[])
+      .filter((p) => p && Number.isFinite(p.x) && Number.isFinite(p.y))
+      .slice(0, MAX_VIA)
+      .map((p) => ({ x: p.x as number, y: p.y as number }))
+    if (pts.length) out.via = pts
+  }
+  if (style && typeof style === 'object') {
+    const st = style as { dash?: unknown; width?: unknown }
+    const clean: NonNullable<Wire['style']> = {}
+    if (typeof st.dash === 'string' && DASH_KINDS.includes(st.dash)) clean.dash = st.dash as NonNullable<Wire['style']>['dash']
+    if (st.width === 1 || st.width === 3) clean.width = st.width
+    if (Object.keys(clean).length) out.style = clean
+  }
+  return out
 }
 
 const ALIGNS = ['start', 'middle', 'end']

@@ -1,48 +1,13 @@
 import { getSymbol } from '../data'
 import { bodyToSvg, escapeXml, styledGroup } from '../lib/svg'
 import { LABEL_LINE_H, LABEL_STYLE, labelBox, labelLines, labelPos } from './labels'
-import type { Doc, Pt, TextNote } from './model'
+import type { Doc, TextNote } from './model'
 import { PAPER, sheetPrims } from './sheet'
-import { NOTE_LINE, defOf, itemBounds, itemMirror, itemScale, noteBounds, noteLines, noteRot, pivotOf, pointsToPath, symbolBody, terminalWorld, routeWire } from './model'
+import { junctions, wireGeometries, wireStroke } from './wires'
+import { NOTE_LINE, defOf, itemBounds, itemMirror, itemScale, noteBounds, noteLines, noteRot, pivotOf, pointsToPath, symbolBody } from './model'
 
-export interface WireGeometry {
-  id: string
-  points: Pt[]
-}
-
-/** Route every wire from the current item positions. Wires with a missing endpoint are skipped. */
-export function wireGeometries(doc: Doc): WireGeometry[] {
-  const items = new Map(doc.items.map((i) => [i.id, i]))
-  const out: WireGeometry[] = []
-  for (const w of doc.wires) {
-    const ia = items.get(w.a.item)
-    const ib = items.get(w.b.item)
-    if (!ia || !ib) continue
-    const a = terminalWorld(ia, defOf(ia), w.a.term)
-    const b = terminalWorld(ib, defOf(ib), w.b.term)
-    if (!a || !b) continue
-    out.push({ id: w.id, points: routeWire(a, [a.dx, a.dy], b, [b.dx, b.dy]) })
-  }
-  return out
-}
-
-/** Terminals that have two or more wires attached get a junction dot. */
-export function junctions(doc: Doc): Pt[] {
-  const counts = new Map<string, number>()
-  for (const w of doc.wires) {
-    for (const e of [w.a, w.b]) counts.set(`${e.item}|${e.term}`, (counts.get(`${e.item}|${e.term}`) ?? 0) + 1)
-  }
-  const items = new Map(doc.items.map((i) => [i.id, i]))
-  const pts: Pt[] = []
-  for (const [key, n] of counts) {
-    if (n < 2) continue
-    const [itemId, termId] = key.split('|')
-    const item = items.get(itemId)
-    const p = item && terminalWorld(item, defOf(item), termId)
-    if (p) pts.push({ x: p.x, y: p.y })
-  }
-  return pts
-}
+export { junctions, wireGeometries } from './wires'
+export type { WireGeometry } from './wires'
 
 /** SVG for one part's label block: reference, then rating, then description. */
 function labelSvg(item: Doc['items'][number], ink: string): string {
@@ -105,8 +70,13 @@ export function diagramToSvg(doc: Doc, opts: { ink?: string; background?: string
     h = maxY - minY + margin * 2
   }
 
+  const wireStyles = new Map(doc.wires.map((w) => [w.id, w.style]))
   const wires = wireGeometries(doc)
-    .map((g) => `<path d="${pointsToPath(g.points)}"/>`)
+    .map((g) => {
+      const st = wireStroke(wireStyles.get(g.id))
+      const extra = `${st.width !== 2 ? ` stroke-width="${st.width}"` : ''}${st.dash ? ` stroke-dasharray="${st.dash}"` : ''}`
+      return `<path d="${pointsToPath(g.points)}"${extra}/>`
+    })
     .join('')
   const dots = junctions(doc)
     .map((p) => `<circle cx="${p.x}" cy="${p.y}" r="4" fill="${ink}" stroke="none"/>`)

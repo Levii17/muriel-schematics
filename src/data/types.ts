@@ -1,7 +1,8 @@
 /** Symbols are plain data: a list of drawing primitives plus connection terminals. */
 
 export type Role = 'in' | 'out' | 'io'
-export type Dir = 'up' | 'down' | 'left' | 'right'
+/** Which way a wire should leave a terminal. 'any' (junctions) means every direction is fine. */
+export type Dir = 'up' | 'down' | 'left' | 'right' | 'any'
 
 /** Optional per-primitive overrides. Without them everything inherits the shared ink and 2 px stroke. */
 export interface PrimStyle {
@@ -56,6 +57,7 @@ export type CategoryId =
   | 'power'
   | 'measure'
   | 'passive'
+  | 'connect'
 
 export interface Category {
   id: CategoryId
@@ -75,6 +77,8 @@ export interface SymbolDef {
   /** Bounding box in px. Always multiples of 20 so rotation pivots stay on the grid. */
   width: number
   height: number
+  /** Area that counts for selecting and hit-testing, when smaller than the whole box (e.g. a junction dot). */
+  bounds?: { x: number; y: number; w: number; h: number }
   terminals: Terminal[]
   body: Prim[]
 }

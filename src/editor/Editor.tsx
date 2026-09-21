@@ -17,6 +17,7 @@ import type { Payload } from './clipboard'
 import { clonePayload, copyPayload } from './clipboard'
 import { dolStarterExample } from './examples'
 import { diagramToSvg, junctions, wireGeometries } from './export'
+import { JUNCTION_SYMBOL, JUNCTION_TERMINAL, nearestWirePoint, shiftSegment, shiftWires, tapPoint, wireStroke } from './wires'
 import { initHistory, reducer } from './history'
 import { Inspector } from './Inspector'
 import { LABEL_LINE_H, labelBox, labelLines, labelPos } from './labels'
@@ -45,6 +46,17 @@ interface View {
   y: number
   k: number
 }
+/**
+ * A change being dragged on the selected wire. `via` is the full waypoint list as it would be if released now.
+ * "move" drags one waypoint; "shift" slides the segment `k` of the current route sideways.
+ */
+type WireEdit = {
+  id: string
+  via: Pt[]
+  sx: number
+  sy: number
+  moved: boolean
+} & ({ mode: 'move'; index: number } | { mode: 'shift'; pts: Pt[]; k: number })
 interface Marquee {
   from: Pt
   to: Pt
@@ -81,7 +93,8 @@ export default function Editor({ armId, loadExample, onToast }: Props) {
   const [labelDrag, setLabelDrag] = useState<{ id: string; start: Pt; delta: Pt } | null>(null)
   const [editing, setEditing] = useState<{ note: TextNote; isNew: boolean } | null>(null)
   const [marquee, setMarquee] = useState<Marquee | null>(null)
-  const [wiring, setWiring] = useState<{ from: Endpoint; cursor: Pt; target: Endpoint | null } | null>(null)
+  const [wiring, setWiring] = useState<{ from: Endpoint; cursor: Pt; target: Endpoint | null; tap: { wireId: string; point: Pt } | null } | null>(null)
+  const [wireEdit, setWireEdit] = useState<WireEdit | null>(null)
   const [query, setQuery] = useState('')
   const [guides, setGuides] = useState<{ x?: number; y?: number }>({})
 
@@ -116,7 +129,11 @@ export default function Editor({ armId, loadExample, onToast }: Props) {
         ...d,
         items: d.items.map((i) => (ids.includes(i.id) ? { ...i, x: i.x + delta.x, y: i.y + delta.y } : i)),
         notes: d.notes.map((n) => (ids.includes(n.id) ? { ...n, x: n.x + delta.x, y: n.y + delta.y } : n)),
+        wires: shiftWires(d.wires, ids, delta.x, delta.y),
       }
+    }
+    if (wireEdit && wireEdit.moved) {
+      d = { ...d, wires: d.wires.map((w) => (w.id === wireEdit.id ? { ...w, via: wireEdit.via } : w)) }
     }
     if (labelDrag && (labelDrag.delta.x !== 0 || labelDrag.delta.y !== 0)) {
       const { id, delta } = labelDrag
@@ -126,8 +143,9 @@ export default function Editor({ armId, loadExample, onToast }: Props) {
       }
     }
     return d
-  }, [doc, drag, labelDrag])
+  }, [doc, drag, labelDrag, wireEdit])
 
+  const wireStyles = useMemo(() => new Map(doc.wires.map((w) => [w.id, w.style])), [doc.wires])
   const sheetArt = useMemo(() => (doc.sheet.enabled ? sheetPrims(doc.sheet) : null), [doc.sheet])
   const wires = useMemo(() => wireGeometries(shown), [shown])
   const dots = useMemo(() => junctions(shown), [shown])
@@ -368,6 +386,7 @@ export default function Editor({ armId, loadExample, onToast }: Props) {
       setGhost(null)
       setMarquee(null)
       setLabelDrag(null)
+      setWireEdit(null)
       setSelection(EMPTY)
     } else if (key === 'delete' || key === 'backspace') {
       e.preventDefault()
@@ -464,13 +483,37 @@ export default function Editor({ armId, loadExample, onToast }: Props) {
       return
     }
 
+    if (kind === 'seg' || kind === 'via') {
+      const id = hit!.getAttribute('data-wire')!
+      const wire = doc.wires.find((x) => x.id === id)
+      const geom = wireGeometries(doc).find((x) => x.id === id)
+      if (wire && geom) {
+        if (kind === 'via') {
+          setWireEdit({ id, mode: 'move', via: [...(wire.via ?? [])], index: Number(hit!.getAttribute('data-index')), sx: e.clientX, sy: e.clientY, moved: false })
+        } else {
+          // Every corner of the current route becomes a waypoint, so the rest of the wire keeps its shape.
+          setWireEdit({ id, mode: 'shift', via: geom.points.slice(1, -1), pts: geom.points, k: Number(hit!.getAttribute('data-seg')), sx: e.clientX, sy: e.clientY, moved: false })
+        }
+      }
+      return
+    }
+
     if (kind === 'term') {
       setWiring({
         from: { item: hit!.getAttribute('data-item')!, term: hit!.getAttribute('data-term')! },
         cursor: w,
         target: null,
+        tap: null,
       })
       return
+    }
+    // Junction dots are small, so their whole area moves them; Alt+drag draws a wire from one instead.
+    if (kind === 'item' && e.altKey) {
+      const id = hit!.getAttribute('data-id')!
+      if (doc.items.find((i) => i.id === id)?.symbolId === JUNCTION_SYMBOL) {
+        setWiring({ from: { item: id, term: JUNCTION_TERMINAL }, cursor: w, target: null, tap: null })
+        return
+      }
     }
     if (armed) {
       const def = getSymbol(armed)!
@@ -524,8 +567,31 @@ export default function Editor({ armId, loadExample, onToast }: Props) {
       const a = alignDelta(moving, fixed, raw)
       setGuides({ x: a.guideX, y: a.guideY })
       setDrag({ ...drag, delta: a.delta })
+    } else if (wireEdit) {
+      const snap10 = (v: number) => Math.round(v / 10) * 10 + 0
+      const fixed = [...terminalPoints(doc.items), ...doc.wires.filter((x) => x.id !== wireEdit.id).flatMap((x) => x.via ?? [])]
+      const far = wireEdit.moved || Math.hypot(e.clientX - wireEdit.sx, e.clientY - wireEdit.sy) > DRAG_THRESHOLD
+      if (wireEdit.mode === 'move') {
+        const raw = { x: snap10(w.x), y: snap10(w.y) }
+        const a = alignDelta([raw], fixed, { x: 0, y: 0 }, 8)
+        setGuides({ x: a.guideX, y: a.guideY })
+        const via = wireEdit.via.map((p, i) => (i === wireEdit.index ? { x: raw.x + a.delta.x, y: raw.y + a.delta.y } : p))
+        setWireEdit({ ...wireEdit, via, moved: far })
+      } else {
+        // Slide the segment sideways: only the coordinate across it changes.
+        const A = wireEdit.pts[wireEdit.k]
+        const B = wireEdit.pts[wireEdit.k + 1]
+        const horizontal = Math.abs(A.y - B.y) < 0.01
+        const probe = { x: horizontal ? (A.x + B.x) / 2 : snap10(w.x), y: horizontal ? snap10(w.y) : (A.y + B.y) / 2 }
+        const a = alignDelta([probe], fixed, { x: 0, y: 0 }, 8)
+        setGuides({ x: horizontal ? undefined : a.guideX, y: horizontal ? a.guideY : undefined })
+        const across = horizontal ? probe.y + a.delta.y : probe.x + a.delta.x
+        const offset = across - (horizontal ? A.y : A.x)
+        setWireEdit({ ...wireEdit, via: shiftSegment(wireEdit.pts, wireEdit.k, offset), moved: far && offset !== 0 })
+      }
     } else if (wiring) {
-      setWiring({ ...wiring, cursor: w, target: nearestTerminal(w, wiring.from) })
+      const target = nearestTerminal(w, wiring.from)
+      setWiring({ ...wiring, cursor: w, target, tap: target ? null : findTap(w, wiring.from) })
     } else if (armed) {
       const def = getSymbol(armed)!
       const at = snapPlacement(def, w, 1, armedOrient.rot, armedOrient.mirror)
@@ -578,14 +644,44 @@ export default function Editor({ armId, loadExample, onToast }: Props) {
       }
       setLabelDrag(null)
     }
+    if (wireEdit) {
+      if (wireEdit.moved) dispatch({ type: 'wire-route', id: wireEdit.id, via: wireEdit.via })
+      setWireEdit(null)
+    }
     if (wiring) {
-      const target = nearestTerminal(toWorld(e), wiring.from)
+      const w = toWorld(e)
+      const target = nearestTerminal(w, wiring.from)
       if (target) dispatch({ type: 'wire', a: wiring.from, b: target })
+      else {
+        const tap = findTap(w, wiring.from)
+        if (tap) dispatch({ type: 'tap', request: { wireId: tap.wireId, at: tap.point, from: wiring.from, junctionId: uid('i'), secondId: uid('w'), newId: uid('w') } })
+      }
       setWiring(null)
     }
   }
 
+  /** Where a wire dragged from `from` would tap into an existing wire, if the pointer is over one (not the wires already on `from`). */
+  const findTap = (p: Pt, from: Endpoint): { wireId: string; point: Pt } | null => {
+    const own = new Set(doc.wires.filter((x) => (x.a.item === from.item && x.a.term === from.term) || (x.b.item === from.item && x.b.term === from.term)).map((x) => x.id))
+    const geoms = wireGeometries(doc)
+    const hit = nearestWirePoint(geoms, p, 10, own)
+    const geom = hit && geoms.find((g) => g.id === hit.wireId)
+    const point = hit && geom ? tapPoint(geom, hit) : null
+    return hit && point ? { wireId: hit.wireId, point } : null
+  }
+
   const onDoubleClick = (e: React.MouseEvent<SVGSVGElement>) => {
+    // Double-clicking a waypoint of the selected wire removes it.
+    if (selection.wires.length === 1 && !selection.items.length && !selection.notes.length) {
+      const wire = doc.wires.find((x) => x.id === selection.wires[0])
+      const at = toWorld(e)
+      const reach = 9 / view.k
+      const i = wire?.via?.findIndex((v) => Math.hypot(v.x - at.x, v.y - at.y) <= reach) ?? -1
+      if (wire?.via && i >= 0) {
+        dispatch({ type: 'wire-route', id: wire.id, via: wire.via.filter((_, k) => k !== i) })
+        return
+      }
+    }
     // While the pointer is captured by the canvas the event target is the canvas itself, so find the note by position.
     const w = toWorld(e)
     const pad = 4
@@ -657,9 +753,17 @@ export default function Editor({ armId, loadExample, onToast }: Props) {
     const tgtItem = wiring.target ? shown.items.find((i) => i.id === wiring.target!.item) : undefined
     const b = tgtItem && wiring.target ? terminalWorld(tgtItem, defOf(tgtItem), wiring.target.term) : null
     if (b) return routeWire(a, [a.dx, a.dy], b, [b.dx, b.dy])
+    if (wiring.tap) return routeWire(a, [a.dx, a.dy], wiring.tap.point, null)
     return routeWire(a, [a.dx, a.dy], { x: snap(wiring.cursor.x), y: snap(wiring.cursor.y) }, null)
   })()
   const marqueeBox = marquee?.moved ? normBox(marquee.from, marquee.to) : null
+  // Handles appear when exactly one wire, and nothing else, is selected.
+  const editableWire = (() => {
+    if (selection.wires.length !== 1 || selection.items.length || selection.notes.length) return null
+    const wire = shown.wires.find((x) => x.id === selection.wires[0])
+    const geom = wire && wires.find((g) => g.id === wire.id)
+    return wire && geom ? { wire, geom } : null
+  })()
   const selCount = countOf(selection)
   const selectedIsEmpty = isEmpty(selection)
   const allConflicts = conflictIds.length + conflictNoteIds.length
@@ -762,13 +866,58 @@ export default function Editor({ armId, loadExample, onToast }: Props) {
                   </g>
                 )}
                 <g className="wires">
-                  {wires.map((w) => (
-                    <g key={w.id}>
-                      <path className={`wire${selection.wires.includes(w.id) ? ' selected' : ''}`} d={pointsToPath(w.points)} />
-                      <path className="wire-hit" data-kind="wire" data-id={w.id} d={pointsToPath(w.points)} />
-                    </g>
-                  ))}
+                  {wires.map((w) => {
+                    const st = wireStroke(wireStyles.get(w.id))
+                    const selected = selection.wires.includes(w.id)
+                    const tapped = wiring?.tap?.wireId === w.id
+                    return (
+                      <g key={w.id}>
+                        <path
+                          className={`wire${selected ? ' selected' : ''}${tapped ? ' tap-target' : ''}`}
+                          d={pointsToPath(w.points)}
+                          style={{ strokeWidth: st.width + (selected || tapped ? 1 : 0), strokeDasharray: st.dash }}
+                        />
+                        <path className="wire-hit" data-kind="wire" data-id={w.id} d={pointsToPath(w.points)} />
+                      </g>
+                    )
+                  })}
                 </g>
+
+                {editableWire && (
+                  <g className="wire-handles">
+                    {editableWire.geom.points.slice(0, -1).map((p, i) => {
+                      const q = editableWire.geom.points[i + 1]
+                      if (Math.hypot(q.x - p.x, q.y - p.y) < 30) return null
+                      const mx = (p.x + q.x) / 2
+                      const my = (p.y + q.y) / 2
+                      return (
+                        <circle
+                          key={`s${i}`}
+                          className="handle seg"
+                          data-kind="seg"
+                          data-wire={editableWire.geom.id}
+                          data-seg={i}
+                          cx={mx}
+                          cy={my}
+                          r={5 / view.k}
+                        />
+                      )
+                    })}
+                    {(editableWire.wire.via ?? []).map((v, i) => (
+                      <rect
+                        key={`v${i}`}
+                        className="handle via"
+                        data-kind="via"
+                        data-wire={editableWire.geom.id}
+                        data-index={i}
+                        x={v.x - 5 / view.k}
+                        y={v.y - 5 / view.k}
+                        width={10 / view.k}
+                        height={10 / view.k}
+                      />
+                    ))}
+                  </g>
+                )}
 
                 {guides.x !== undefined && <line className="guide" x1={guides.x} x2={guides.x} y1={-4000} y2={6000} />}
                 {guides.y !== undefined && <line className="guide" y1={guides.y} y2={guides.y} x1={-4000} x2={6000} />}
@@ -823,7 +972,8 @@ export default function Editor({ armId, loadExample, onToast }: Props) {
                         data-id={it.id}
                         transform={`translate(${it.x} ${it.y}) rotate(${it.rot}) translate(${-pv.x * k} ${-pv.y * k})`}
                       >
-                        <rect className="item-hit" x={-4} y={-4} width={def.width * k + 8} height={def.height * k + 8} />
+                        <rect className="item-hit" x={(def.bounds?.x ?? 0) * k - 4} y={(def.bounds?.y ?? 0) * k - 4} width={(def.bounds?.w ?? def.width) * k + 8} height={(def.bounds?.h ?? def.height) * k + 8} />
+                        {it.symbolId === JUNCTION_SYMBOL && <title>Junction. Alt+drag to start a wire from it.</title>}
                         <GlyphBody def={def} scale={k} mirror={itemMirror(it)} />
                       </g>
                     </g>
@@ -858,12 +1008,14 @@ export default function Editor({ armId, loadExample, onToast }: Props) {
                   return def.terminals.map((t) => {
                     const p = terminalWorld(it, def, t.id)!
                     const isTarget = wiring?.target?.item === it.id && wiring.target.term === t.id
+                    const zero = p.dx === 0 && p.dy === 0
                     const lx = p.x + p.dx * 12
-                    const ly = p.y + p.dy * 12 + (p.dy === 0 ? 4 : p.dy > 0 ? 8 : 0)
+                    const ly = zero ? p.y - 10 : p.y + p.dy * 12 + (p.dy === 0 ? 4 : p.dy > 0 ? 8 : 0)
+                    const junction = it.symbolId === JUNCTION_SYMBOL
                     return (
                       <g key={`${it.id}:${t.id}`} className={`term-g tg-${t.role}${isTarget ? ' is-target' : ''}`}>
-                        <circle className="t-dot" cx={p.x} cy={p.y} r={3.5} />
-                        <circle className="t-hit" data-kind="term" data-item={it.id} data-term={t.id} cx={p.x} cy={p.y} r={10} />
+                        {!junction && <circle className="t-dot" cx={p.x} cy={p.y} r={3.5} />}
+                        {!junction && <circle className="t-hit" data-kind="term" data-item={it.id} data-term={t.id} cx={p.x} cy={p.y} r={10} />}
                         <text className="t-label" x={lx} y={ly} textAnchor={p.dx > 0 ? 'start' : p.dx < 0 ? 'end' : 'middle'}>
                           {t.label}
                         </text>
@@ -873,6 +1025,7 @@ export default function Editor({ armId, loadExample, onToast }: Props) {
                 })}
 
                 {draftPoints && <path className="wire draft" d={pointsToPath(draftPoints)} />}
+                {wiring?.tap && <circle className="tap-dot" cx={wiring.tap.point.x} cy={wiring.tap.point.y} r={6} />}
 
                 {armedDef && ghost && (
                   <g
@@ -961,6 +1114,8 @@ export default function Editor({ armId, loadExample, onToast }: Props) {
           onLabel={(id, label) => dispatch({ type: 'label', id, label })}
           onProps={(id, patch) => dispatch({ type: 'props', id, patch })}
           onResetLabel={(id) => dispatch({ type: 'label-offset', id, offset: null })}
+          onWireStyle={(patch) => dispatch({ type: 'wire-style', ids: selection.wires, patch })}
+          onResetRoute={(id) => dispatch({ type: 'wire-route', id, via: null })}
           onNote={(id, patch) => dispatch({ type: 'edit-note', id, patch })}
           onSheet={(patch) => dispatch({ type: 'sheet', patch })}
           onResize={resizeSelected}

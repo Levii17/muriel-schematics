@@ -1,5 +1,6 @@
 import { SCALES } from '../data/scale'
-import type { Doc, Endpoint, Item, Pt, TextNote, WireStyle } from './model'
+import type { Doc, Endpoint, Item, Pt, Shape, TextNote, WireStyle } from './model'
+import { moveShape } from './shapes'
 import type { AlignMode, Axis } from './align'
 import { alignMoves, distributeMoves } from './align'
 import type { Payload } from './clipboard'
@@ -23,7 +24,14 @@ export type Action =
   | { type: 'align'; ids: string[]; mode: AlignMode }
   | { type: 'distribute'; ids: string[]; axis: Axis }
   | { type: 'paste'; payload: Payload }
-  | { type: 'delete'; items: string[]; wires: string[]; notes?: string[] }
+  | { type: 'delete'; items: string[]; wires: string[]; notes?: string[]; shapes?: string[] }
+  | { type: 'add-shape'; shape: Shape }
+  | { type: 'edit-shape'; id: string; shape: Shape }
+  | {
+      type: 'shape-style'
+      ids: string[]
+      patch: { dash?: WireStyle['dash'] | null; width?: 1 | 2 | 3 | null; arrow?: 'end' | 'both' | null; fill?: boolean; radius?: number | null }
+    }
   | { type: 'wire-route'; id: string; via: Pt[] | null }
   | { type: 'wire-style'; ids: string[]; patch: { dash?: WireStyle['dash'] | null; width?: 1 | 2 | 3 | null } }
   | { type: 'tap'; request: TapRequest }
@@ -92,6 +100,7 @@ function apply(doc: Doc, action: Action): Doc {
         ...doc,
         items: doc.items.map((i) => (action.ids.includes(i.id) ? { ...i, x: i.x + action.dx, y: i.y + action.dy } : i)),
         notes: doc.notes.map((n) => (action.ids.includes(n.id) ? { ...n, x: n.x + action.dx, y: n.y + action.dy } : n)),
+        shapes: doc.shapes.map((sh) => (action.ids.includes(sh.id) ? moveShape(sh, action.dx, action.dy) : sh)),
         wires: shiftWires(doc.wires, action.ids, action.dx, action.dy),
       }
     case 'rotate':
@@ -108,7 +117,50 @@ function apply(doc: Doc, action: Action): Doc {
         items: [...doc.items, ...action.payload.items],
         wires: [...doc.wires, ...action.payload.wires],
         notes: [...doc.notes, ...action.payload.notes],
+        shapes: [...doc.shapes, ...action.payload.shapes],
       }
+    case 'add-shape':
+      return { ...doc, shapes: [...doc.shapes, action.shape] }
+    case 'edit-shape': {
+      const cur = doc.shapes.find((sh) => sh.id === action.id)
+      if (!cur || JSON.stringify(cur) === JSON.stringify(action.shape)) return doc
+      return { ...doc, shapes: doc.shapes.map((sh) => (sh.id === action.id ? action.shape : sh)) }
+    }
+    case 'shape-style': {
+      let changed = false
+      const shapes = doc.shapes.map((sh) => {
+        if (!action.ids.includes(sh.id)) return sh
+        const next: Shape = { ...sh }
+        const style: WireStyle = { ...sh.style }
+        const p = action.patch
+        if ('dash' in p) {
+          if (p.dash) style.dash = p.dash
+          else delete style.dash
+        }
+        if ('width' in p) {
+          if (p.width === 1 || p.width === 3) style.width = p.width
+          else delete style.width
+        }
+        if (Object.keys(style).length) next.style = style
+        else delete next.style
+        if (next.kind === 'line' && 'arrow' in p) {
+          if (p.arrow) next.arrow = p.arrow
+          else delete next.arrow
+        }
+        if ((next.kind === 'rect' || next.kind === 'ellipse') && 'fill' in p) {
+          if (p.fill) next.fill = true
+          else delete next.fill
+        }
+        if (next.kind === 'rect' && 'radius' in p) {
+          if (p.radius) next.radius = p.radius
+          else delete next.radius
+        }
+        if (JSON.stringify(next) === JSON.stringify(sh)) return sh
+        changed = true
+        return next
+      })
+      return changed ? { ...doc, shapes } : doc
+    }
     case 'wire-route': {
       let changed = false
       const wires = doc.wires.map((w) => {
@@ -193,6 +245,7 @@ function apply(doc: Doc, action: Action): Doc {
       return {
         ...doc,
         notes: doc.notes.filter((n) => !(action.notes ?? []).includes(n.id)),
+        shapes: doc.shapes.filter((sh) => !(action.shapes ?? []).includes(sh.id)),
         items: doc.items.filter((i) => !action.items.includes(i.id)),
         wires: doc.wires.filter((w) => !action.wires.includes(w.id) && !action.items.includes(w.a.item) && !action.items.includes(w.b.item)),
       }
@@ -207,6 +260,7 @@ function apply(doc: Doc, action: Action): Doc {
         ...doc,
         items: doc.items.map((i) => ({ ...i, x: i.x + action.dx, y: i.y + action.dy })),
         notes: doc.notes.map((n) => ({ ...n, x: n.x + action.dx, y: n.y + action.dy })),
+        shapes: doc.shapes.map((sh) => moveShape(sh, action.dx, action.dy)),
         wires: shiftWires(doc.wires, doc.items.map((i) => i.id), action.dx, action.dy),
         sheet: { ...doc.sheet, size: action.size },
       }

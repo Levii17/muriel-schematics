@@ -1,20 +1,25 @@
 import type { WireGeometry } from './export'
-import type { Item, Pt, Rect, TextNote } from './model'
+import type { Item, Pt, Rect, Shape, TextNote } from './model'
 import { defOf, itemBounds, noteBounds } from './model'
+import { shapeInBox } from './shapes'
 
-/** What is selected: any mix of parts, wires and text notes. */
+/** What is selected: any mix of parts, wires, text notes and graphic shapes. */
 export interface Selection {
   items: string[]
   wires: string[]
   notes: string[]
+  shapes: string[]
 }
 
-export const EMPTY: Selection = { items: [], wires: [], notes: [] }
+export const EMPTY: Selection = { items: [], wires: [], notes: [], shapes: [] }
 
-export const isEmpty = (s: Selection) => s.items.length === 0 && s.wires.length === 0 && s.notes.length === 0
-export const countOf = (s: Selection) => s.items.length + s.wires.length + s.notes.length
-/** Ids of everything that moves, turns or nudges as a body: parts and notes (wires follow their parts). */
-export const bodyIds = (s: Selection) => [...s.items, ...s.notes]
+/** Build a selection from just the parts of it you have. */
+export const sel = (p: Partial<Selection>): Selection => ({ ...EMPTY, ...p })
+
+export const isEmpty = (s: Selection) => s.items.length === 0 && s.wires.length === 0 && s.notes.length === 0 && s.shapes.length === 0
+export const countOf = (s: Selection) => s.items.length + s.wires.length + s.notes.length + s.shapes.length
+/** Ids of everything that moves, turns or nudges as a body: parts, notes and shapes (wires follow their parts). */
+export const bodyIds = (s: Selection) => [...s.items, ...s.notes, ...s.shapes]
 
 export const toggle = (list: string[], id: string): string[] => (list.includes(id) ? list.filter((x) => x !== id) : [...list, id])
 
@@ -43,6 +48,10 @@ export function itemsInBox(items: Item[], box: Rect, mode: BoxMode): string[] {
 
 export function notesInBox(notes: TextNote[], box: Rect, mode: BoxMode): string[] {
   return notes.filter((n) => pick(box, noteBounds(n), mode)).map((n) => n.id)
+}
+
+export function shapesInBox(shapes: Shape[], box: Rect, mode: BoxMode): string[] {
+  return shapes.filter((s) => shapeInBox(s, box, mode)).map((s) => s.id)
 }
 
 export function wiresInBox(geoms: WireGeometry[], box: Rect, mode: BoxMode): string[] {

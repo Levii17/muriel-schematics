@@ -2,6 +2,7 @@ import { getSymbol } from '../data'
 import { SCALES, mirrorPrim, scaleBody } from '../data/scale'
 import type { Dir, Prim, SymbolDef } from '../data/types'
 import type { SheetConfig } from './sheet'
+import { scaleShape, shapeBounds } from './shapes'
 import { defaultSheet } from './sheet'
 
 export const GRID = 20
@@ -54,6 +55,41 @@ export interface WireStyle {
   width?: 1 | 3
 }
 
+/** Purely graphic geometry: enclosures, linkages, outlines. Shapes never connect to anything. */
+export interface LineShape {
+  id: string
+  kind: 'line'
+  x1: number
+  y1: number
+  x2: number
+  y2: number
+  style?: WireStyle
+  arrow?: 'end' | 'both'
+}
+export interface RectShape {
+  id: string
+  kind: 'rect'
+  x: number
+  y: number
+  w: number
+  h: number
+  style?: WireStyle
+  /** Lightly tinted inside. Unfilled shapes can only be picked by their outline. */
+  fill?: boolean
+  radius?: number
+}
+export interface EllipseShape {
+  id: string
+  kind: 'ellipse'
+  cx: number
+  cy: number
+  rx: number
+  ry: number
+  style?: WireStyle
+  fill?: boolean
+}
+export type Shape = LineShape | RectShape | EllipseShape
+
 export interface Wire {
   id: string
   a: Endpoint
@@ -69,6 +105,7 @@ export interface Doc {
   items: Item[]
   wires: Wire[]
   notes: TextNote[]
+  shapes: Shape[]
   /** Paper, border and title block. Drawn under the circuit when `sheet.enabled`. */
   sheet: SheetConfig
 }
@@ -83,7 +120,7 @@ export interface Rect {
   h: number
 }
 
-export const emptyDoc = (): Doc => ({ items: [], wires: [], notes: [], sheet: defaultSheet() })
+export const emptyDoc = (): Doc => ({ items: [], wires: [], notes: [], shapes: [], sheet: defaultSheet() })
 
 // "+ 0" turns -0 into 0 so coordinates never print as "-0".
 export const snap = (v: number) => Math.round(v / GRID) * GRID + 0
@@ -369,6 +406,11 @@ export function scaleDrawing(doc: Doc, factor: number): Doc | null {
     ax = Math.min(ax, b.x)
     ay = Math.min(ay, b.y)
   }
+  for (const s of doc.shapes) {
+    const b = shapeBounds(s)
+    ax = Math.min(ax, b.x)
+    ay = Math.min(ay, b.y)
+  }
   const r = (v: number) => Math.round(v * 100) / 100
   // Text follows the drawing: its size moves to the nearest preset, so it never becomes unreadably small or huge.
   const nearestSize = (v: number) => NOTE_SIZES.reduce((best, s) => (Math.abs(s - v) < Math.abs(best - v) ? s : best), NOTE_SIZES[0])
@@ -383,6 +425,7 @@ export function scaleDrawing(doc: Doc, factor: number): Doc | null {
       y: r(ay + (it.y - ay) * factor),
       ...(it.labelOffset ? { labelOffset: { x: r(it.labelOffset.x * factor), y: r(it.labelOffset.y * factor) } } : {}),
     })),
+    shapes: doc.shapes.map((s) => scaleShape(s, ax, ay, factor)),
     notes: doc.notes.map((n) => ({
       ...n,
       x: r(ax + (n.x - ax) * factor),

@@ -5,14 +5,14 @@ import type { SymbolDef } from '../data/types'
 import { GlyphBody, Prims, SymbolSvg } from '../components/Glyph'
 import {
   CursorIcon, DuplicateIcon, FitIcon, FlipHIcon, FlipVIcon, HandIcon, MinusIcon, PlusIcon, PrintIcon, RedoIcon, RotateIcon,
-  TextIcon, TrashIcon, UndoIcon, WarnIcon,
+  EllipseIcon, LineIcon, RectIcon, TextIcon, TrashIcon, UndoIcon, WarnIcon,
 } from '../components/Icons'
 import { loadJson, saveJson } from '../lib/hooks'
 import { printSheet } from '../lib/print'
 import { searchSymbols } from '../lib/search'
 import { downloadBlob, downloadText, svgToPngBlob } from '../lib/svg'
 import type { AlignMode, Axis } from './align'
-import { conflictingItemIds, conflictingNoteIds, planFit, planShrink } from './checks'
+import { conflictingItemIds, conflictingNoteIds, conflictingShapeIds, planFit, planShrink } from './checks'
 import type { Payload } from './clipboard'
 import { clonePayload, copyPayload } from './clipboard'
 import { dolStarterExample } from './examples'
@@ -20,16 +20,20 @@ import { diagramToSvg, junctions, wireGeometries } from './export'
 import { JUNCTION_SYMBOL, JUNCTION_TERMINAL, nearestWirePoint, shiftSegment, shiftWires, tapPoint, wireStroke } from './wires'
 import { initHistory, reducer } from './history'
 import { Inspector } from './Inspector'
+import { isTextTarget, usesSpace } from './keys'
 import { LABEL_LINE_H, labelBox, labelLines, labelPos } from './labels'
-import type { Doc, Endpoint, Item, Pt, Rot, TextNote } from './model'
+import type { Doc, Endpoint, Item, Pt, Rot, Shape, TextNote } from './model'
 import {
   NOTE_LINE, alignDelta, defOf, itemBounds, itemMirror, itemScale, nextLabel, noteBounds, noteLines, noteLocalBox, noteRot, pivotOf,
   pointsToPath, routeWire, scaleDrawing, snap, snapPlacement, terminalPoints, terminalWorld, uid,
 } from './model'
 import { sanitizeDoc } from './persist'
 import type { Selection } from './select'
-import { EMPTY, bodyIds, boxMode, countOf, isEmpty, itemsInBox, normBox, notesInBox, toggle, wiresInBox } from './select'
+import { EMPTY, bodyIds, boxMode, countOf, isEmpty, itemsInBox, normBox, notesInBox, sel, shapesInBox, toggle, wiresInBox } from './select'
 import { PAPER, paperBox, sheetPrims } from './sheet'
+import { ShapeView, hitWidth } from './ShapeView'
+import { handlesOf, isUsable, moveShape, resizeShape, shapeBounds, shapeFromDrag } from './shapes'
+import type { HandleId } from './shapes'
 import { nextOrientation } from './transform'
 
 const STORAGE_KEY = 'es.doc.v1'
@@ -40,7 +44,8 @@ const SNAP_RADIUS = 18
 const DRAG_THRESHOLD = 4
 const LABEL_SNAP = 5
 
-type Tool = 'select' | 'pan' | 'text'
+type Tool = 'select' | 'pan' | 'text' | 'line' | 'rect' | 'ellipse'
+const SHAPE_TOOLS: Tool[] = ['line', 'rect', 'ellipse']
 interface View {
   x: number
   y: number
@@ -72,11 +77,6 @@ interface Props {
   onToast: (msg: string) => void
 }
 
-const isTextTarget = (t: EventTarget | null) => {
-  const el = t as HTMLElement | null
-  return !!el && ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName)
-}
-
 export default function Editor({ armId, loadExample, onToast }: Props) {
   const [hist, dispatch] = useReducer(reducer, undefined, () => initHistory(sanitizeDoc(loadJson<unknown>(STORAGE_KEY)) ?? dolStarterExample()))
   const doc = hist.present
@@ -95,6 +95,8 @@ export default function Editor({ armId, loadExample, onToast }: Props) {
   const [marquee, setMarquee] = useState<Marquee | null>(null)
   const [wiring, setWiring] = useState<{ from: Endpoint; cursor: Pt; target: Endpoint | null; tap: { wireId: string; point: Pt } | null } | null>(null)
   const [wireEdit, setWireEdit] = useState<WireEdit | null>(null)
+  const [drawing, setDrawing] = useState<{ kind: Shape['kind']; from: Pt; to: Pt; constrain: boolean; sx: number; sy: number } | null>(null)
+  const [shapeEdit, setShapeEdit] = useState<{ id: string; handle: HandleId; orig: Shape; shape: Shape; sx: number; sy: number; moved: boolean } | null>(null)
   const [query, setQuery] = useState('')
   const [guides, setGuides] = useState<{ x?: number; y?: number }>({})
 
@@ -113,10 +115,10 @@ export default function Editor({ armId, loadExample, onToast }: Props) {
     const items = rawSelection.items.filter((id) => doc.items.some((i) => i.id === id))
     const wires = rawSelection.wires.filter((id) => doc.wires.some((w) => w.id === id))
     const notes = rawSelection.notes.filter((id) => doc.notes.some((n) => n.id === id))
-    return items.length === rawSelection.items.length && wires.length === rawSelection.wires.length && notes.length === rawSelection.notes.length
-      ? rawSelection
-      : { items, wires, notes }
-  }, [rawSelection, doc.items, doc.wires, doc.notes])
+    const shapes = rawSelection.shapes.filter((id) => doc.shapes.some((sh) => sh.id === id))
+    const same = items.length === rawSelection.items.length && wires.length === rawSelection.wires.length && notes.length === rawSelection.notes.length && shapes.length === rawSelection.shapes.length
+    return same ? rawSelection : { items, wires, notes, shapes }
+  }, [rawSelection, doc.items, doc.wires, doc.notes, doc.shapes])
 
   /* ---------- derived ---------- */
 
@@ -129,8 +131,12 @@ export default function Editor({ armId, loadExample, onToast }: Props) {
         ...d,
         items: d.items.map((i) => (ids.includes(i.id) ? { ...i, x: i.x + delta.x, y: i.y + delta.y } : i)),
         notes: d.notes.map((n) => (ids.includes(n.id) ? { ...n, x: n.x + delta.x, y: n.y + delta.y } : n)),
+        shapes: d.shapes.map((sh) => (ids.includes(sh.id) ? moveShape(sh, delta.x, delta.y) : sh)),
         wires: shiftWires(d.wires, ids, delta.x, delta.y),
       }
+    }
+    if (shapeEdit && shapeEdit.moved) {
+      d = { ...d, shapes: d.shapes.map((sh) => (sh.id === shapeEdit.id ? shapeEdit.shape : sh)) }
     }
     if (wireEdit && wireEdit.moved) {
       d = { ...d, wires: d.wires.map((w) => (w.id === wireEdit.id ? { ...w, via: wireEdit.via } : w)) }
@@ -143,7 +149,7 @@ export default function Editor({ armId, loadExample, onToast }: Props) {
       }
     }
     return d
-  }, [doc, drag, labelDrag, wireEdit])
+  }, [doc, drag, labelDrag, wireEdit, shapeEdit])
 
   const wireStyles = useMemo(() => new Map(doc.wires.map((w) => [w.id, w.style])), [doc.wires])
   const sheetArt = useMemo(() => (doc.sheet.enabled ? sheetPrims(doc.sheet) : null), [doc.sheet])
@@ -155,10 +161,12 @@ export default function Editor({ armId, loadExample, onToast }: Props) {
   const filtered = useMemo(() => searchSymbols(SYMBOLS, query), [query])
   const conflictIds = useMemo(() => conflictingItemIds(shown), [shown])
   const conflictNoteIds = useMemo(() => conflictingNoteIds(shown), [shown])
+  const conflictShapeIds = useMemo(() => conflictingShapeIds(shown), [shown])
   const fitPlan = useMemo(() => planFit(doc), [doc])
   const shrinkPlan = useMemo(() => (fitPlan.ok ? null : planShrink(doc)), [doc, fitPlan])
 
   const panMode = tool === 'pan' || space
+  const drawTool = SHAPE_TOOLS.includes(tool)
 
   /* ---------- coordinates & view ---------- */
 
@@ -181,7 +189,7 @@ export default function Editor({ armId, loadExample, onToast }: Props) {
 
   const fit = useCallback((d: Doc) => {
     const r = svgRef.current?.getBoundingClientRect()
-    if (!r || (!d.items.length && !d.notes.length && !d.sheet.enabled)) {
+    if (!r || (!d.items.length && !d.notes.length && !d.shapes.length && !d.sheet.enabled)) {
       setView({ x: 40, y: 40, k: 1 })
       return
     }
@@ -200,6 +208,7 @@ export default function Editor({ armId, loadExample, onToast }: Props) {
       if (lb) grow(lb)
     }
     for (const n of d.notes) grow(noteBounds(n))
+    for (const sh of d.shapes) grow(shapeBounds(sh))
     const pad = d.sheet.enabled ? 24 : 60
     const k = Math.min(1.5, Math.max(MIN_ZOOM, Math.min((r.width - pad * 2) / (x1 - x0), (r.height - pad * 2) / (y1 - y0))))
     setView({ k, x: (r.width - (x1 - x0) * k) / 2 - x0 * k, y: (r.height - (y1 - y0) * k) / 2 - y0 * k })
@@ -265,7 +274,7 @@ export default function Editor({ armId, loadExample, onToast }: Props) {
 
   const deleteSelected = useCallback(() => {
     if (isEmpty(selection)) return
-    dispatch({ type: 'delete', items: selection.items, wires: selection.wires, notes: selection.notes })
+    dispatch({ type: 'delete', items: selection.items, wires: selection.wires, notes: selection.notes, shapes: selection.shapes })
     setSelection(EMPTY)
   }, [selection])
 
@@ -279,6 +288,7 @@ export default function Editor({ armId, loadExample, onToast }: Props) {
         const bits = [
           payload.items.length && `${payload.items.length} ${payload.items.length === 1 ? 'part' : 'parts'}`,
           payload.notes.length && `${payload.notes.length} ${payload.notes.length === 1 ? 'note' : 'notes'}`,
+          payload.shapes.length && `${payload.shapes.length} ${payload.shapes.length === 1 ? 'shape' : 'shapes'}`,
           payload.wires.length && `${payload.wires.length} ${payload.wires.length === 1 ? 'wire' : 'wires'}`,
         ].filter(Boolean)
         onToast(`Copied ${bits.join(' and ')}`)
@@ -292,7 +302,7 @@ export default function Editor({ armId, loadExample, onToast }: Props) {
     (payload: Payload, offset: number) => {
       const clone = clonePayload(doc, payload, offset, offset)
       dispatch({ type: 'paste', payload: clone })
-      setSelection({ items: clone.items.map((i) => i.id), wires: [], notes: clone.notes.map((n) => n.id) })
+      setSelection(sel({ items: clone.items.map((i) => i.id), notes: clone.notes.map((n) => n.id), shapes: clone.shapes.map((sh) => sh.id) }))
     },
     [doc],
   )
@@ -315,7 +325,7 @@ export default function Editor({ armId, loadExample, onToast }: Props) {
     if (payload) pasteFrom(payload, 40)
   }, [doc, selection, pasteFrom])
 
-  const selectAll = useCallback(() => setSelection({ items: doc.items.map((i) => i.id), wires: doc.wires.map((w) => w.id), notes: doc.notes.map((n) => n.id) }), [doc])
+  const selectAll = useCallback(() => setSelection({ items: doc.items.map((i) => i.id), wires: doc.wires.map((w) => w.id), notes: doc.notes.map((n) => n.id), shapes: doc.shapes.map((sh) => sh.id) }), [doc])
 
   const align = useCallback((mode: AlignMode) => dispatch({ type: 'align', ids: selection.items, mode }), [selection.items])
   const distribute = useCallback((axis: Axis) => dispatch({ type: 'distribute', ids: selection.items, axis }), [selection.items])
@@ -324,7 +334,7 @@ export default function Editor({ armId, loadExample, onToast }: Props) {
     const plan = planFit(doc)
     if (!plan.ok) return onToast('That will not fit even on A1. Make the parts smaller first.')
     dispatch({ type: 'fit-sheet', dx: plan.dx, dy: plan.dy, size: plan.size })
-    requestAnimationFrame(() => fit({ ...doc, items: doc.items.map((i) => ({ ...i, x: i.x + plan.dx, y: i.y + plan.dy })), notes: doc.notes.map((n) => ({ ...n, x: n.x + plan.dx, y: n.y + plan.dy })), sheet: { ...doc.sheet, size: plan.size } }))
+    requestAnimationFrame(() => fit({ ...doc, items: doc.items.map((i) => ({ ...i, x: i.x + plan.dx, y: i.y + plan.dy })), notes: doc.notes.map((n) => ({ ...n, x: n.x + plan.dx, y: n.y + plan.dy })), shapes: doc.shapes.map((sh) => moveShape(sh, plan.dx, plan.dy)), sheet: { ...doc.sheet, size: plan.size } }))
   }, [doc, fit, onToast])
 
   const shrinkAndFit = useCallback(() => {
@@ -333,7 +343,7 @@ export default function Editor({ armId, loadExample, onToast }: Props) {
     dispatch({ type: 'scale-all', factor: plan.factor })
     dispatch({ type: 'fit-sheet', dx: plan.plan.dx, dy: plan.plan.dy, size: plan.plan.size })
     const scaled = scaleDrawing(doc, plan.factor)!
-    requestAnimationFrame(() => fit({ ...scaled, items: scaled.items.map((i) => ({ ...i, x: i.x + plan.plan.dx, y: i.y + plan.plan.dy })), notes: scaled.notes.map((n) => ({ ...n, x: n.x + plan.plan.dx, y: n.y + plan.plan.dy })), sheet: { ...doc.sheet, size: plan.plan.size } }))
+    requestAnimationFrame(() => fit({ ...scaled, items: scaled.items.map((i) => ({ ...i, x: i.x + plan.plan.dx, y: i.y + plan.plan.dy })), notes: scaled.notes.map((n) => ({ ...n, x: n.x + plan.plan.dx, y: n.y + plan.plan.dy })), shapes: scaled.shapes.map((sh) => moveShape(sh, plan.plan.dx, plan.plan.dy)), sheet: { ...doc.sheet, size: plan.plan.size } }))
   }, [doc, fit, onToast])
 
   const scaleAll = useCallback(
@@ -375,7 +385,7 @@ export default function Editor({ armId, loadExample, onToast }: Props) {
     if (isTextTarget(e.target)) return
     const mod = e.ctrlKey || e.metaKey
     const key = e.key.toLowerCase()
-    const onControl = ['BUTTON', 'A'].includes((e.target as HTMLElement | null)?.tagName ?? '')
+    const onControl = usesSpace(e.target)
 
     if (key === ' ' && !onControl) {
       e.preventDefault()
@@ -387,6 +397,9 @@ export default function Editor({ armId, loadExample, onToast }: Props) {
       setMarquee(null)
       setLabelDrag(null)
       setWireEdit(null)
+      setDrawing(null)
+      setShapeEdit(null)
+      setTool((t) => (t === 'select' || t === 'pan' ? t : 'select'))
       setSelection(EMPTY)
     } else if (key === 'delete' || key === 'backspace') {
       e.preventDefault()
@@ -428,6 +441,12 @@ export default function Editor({ armId, loadExample, onToast }: Props) {
       setTool('pan')
     } else if (key === 't') {
       setTool('text')
+    } else if (key === 'l') {
+      setTool('line')
+    } else if (key === 'b') {
+      setTool('rect')
+    } else if (key === 'o') {
+      setTool('ellipse')
     } else if (key === ']' || key === '=' || key === '+') {
       resizeSelected(1)
     } else if (key === '[' || key === '-') {
@@ -458,6 +477,14 @@ export default function Editor({ armId, loadExample, onToast }: Props) {
 
   /* ---------- pointer handling ---------- */
 
+  /** Where a part being placed would land for a pointer at w: on the grid by its first terminal, then pulled onto a nearby terminal line. */
+  const placementAt = (def: SymbolDef, w: Pt): { at: Pt; guideX?: number; guideY?: number } => {
+    const at = snapPlacement(def, w, 1, armedOrient.rot, armedOrient.mirror)
+    const probe: Item = { id: 'ghost', symbolId: def.id, x: at.x, y: at.y, rot: armedOrient.rot, label: '', mirror: armedOrient.mirror || undefined }
+    const a = alignDelta(terminalPoints([probe]), terminalPoints(doc.items), { x: 0, y: 0 })
+    return { at: { x: at.x + a.delta.x, y: at.y + a.delta.y }, guideX: a.guideX, guideY: a.guideY }
+  }
+
   const onPointerDown = (e: ReactPointerEvent<SVGSVGElement>) => {
     if (e.button !== 0 && e.button !== 1) return
     if (e.button === 1) e.preventDefault()
@@ -470,6 +497,20 @@ export default function Editor({ armId, loadExample, onToast }: Props) {
     if (e.button === 1 || panMode) {
       panRef.current = { sx: e.clientX, sy: e.clientY, vx: viewRef.current.x, vy: viewRef.current.y }
       setPanning(true)
+      return
+    }
+
+    // Drawing tools: a drag anywhere draws the shape (they never connect to parts or wires).
+    if (drawTool && !armed) {
+      const p = { x: Math.round(w.x / 10) * 10 + 0, y: Math.round(w.y / 10) * 10 + 0 }
+      setDrawing({ kind: tool as Shape['kind'], from: p, to: p, constrain: e.shiftKey, sx: e.clientX, sy: e.clientY })
+      setSelection(EMPTY)
+      return
+    }
+    if (kind === 'shandle') {
+      const id = hit!.getAttribute('data-id')!
+      const shape = doc.shapes.find((sh) => sh.id === id)
+      if (shape) setShapeEdit({ id, handle: hit!.getAttribute('data-h') as HandleId, orig: shape, shape, sx: e.clientX, sy: e.clientY, moved: false })
       return
     }
 
@@ -517,32 +558,33 @@ export default function Editor({ armId, loadExample, onToast }: Props) {
     }
     if (armed) {
       const def = getSymbol(armed)!
-      const at = ghost ?? snapPlacement(def, w, 1, armedOrient.rot, armedOrient.mirror)
+      // Work the spot out from this click, not from the last hover: a tap has no hover before it.
+      const at = placementAt(def, w).at
       const item: Item = { id: uid('i'), symbolId: def.id, x: at.x, y: at.y, rot: armedOrient.rot, label: nextLabel(doc.items, def) }
       if (armedOrient.mirror) item.mirror = true
       dispatch({ type: 'add', item })
-      setSelection({ items: [item.id], wires: [], notes: [] })
+      setSelection(sel({ items: [item.id], wires: [], notes: [] }))
       return
     }
     if (kind === 'label') {
       const id = hit!.getAttribute('data-id')!
-      setSelection({ items: [id], wires: [], notes: [] })
+      setSelection(sel({ items: [id], wires: [], notes: [] }))
       setLabelDrag({ id, start: w, delta: { x: 0, y: 0 } })
       return
     }
-    if (kind === 'item' || kind === 'note') {
+    if (kind === 'item' || kind === 'note' || kind === 'shape') {
       const id = hit!.getAttribute('data-id')!
-      const list = kind === 'item' ? 'items' : 'notes'
+      const list = kind === 'item' ? 'items' : kind === 'note' ? 'notes' : 'shapes'
       let next: Selection = selection
       if (e.shiftKey) next = { ...selection, [list]: toggle(selection[list], id) }
-      else if (!selection[list].includes(id)) next = { items: [], wires: [], notes: [], [list]: [id] }
+      else if (!selection[list].includes(id)) next = sel({ [list]: [id] })
       setSelection(next)
       if (next[list].includes(id)) setDrag({ ids: bodyIds(next), start: w, delta: { x: 0, y: 0 }, clickId: id, shift: e.shiftKey })
       return
     }
     if (kind === 'wire') {
       const id = hit!.getAttribute('data-id')!
-      setSelection(e.shiftKey ? { ...selection, wires: toggle(selection.wires, id) } : { items: [], wires: [id], notes: [] })
+      setSelection(e.shiftKey ? { ...selection, wires: toggle(selection.wires, id) } : sel({ wires: [id] }))
       return
     }
     // Empty canvas: start a box selection (a plain click, with no drag, just clears the selection).
@@ -554,6 +596,12 @@ export default function Editor({ armId, loadExample, onToast }: Props) {
     if (panRef.current) {
       const p = panRef.current
       setView((v) => ({ ...v, x: p.vx + e.clientX - p.sx, y: p.vy + e.clientY - p.sy }))
+    } else if (drawing) {
+      setDrawing({ ...drawing, to: { x: Math.round(w.x / 10) * 10 + 0, y: Math.round(w.y / 10) * 10 + 0 }, constrain: e.shiftKey })
+    } else if (shapeEdit) {
+      const p = { x: Math.round(w.x / 10) * 10 + 0, y: Math.round(w.y / 10) * 10 + 0 }
+      const far = shapeEdit.moved || Math.hypot(e.clientX - shapeEdit.sx, e.clientY - shapeEdit.sy) > DRAG_THRESHOLD
+      setShapeEdit({ ...shapeEdit, shape: resizeShape(shapeEdit.orig, shapeEdit.handle, p, e.shiftKey), moved: far })
     } else if (labelDrag) {
       const snapTo = (v: number) => Math.round(v / LABEL_SNAP) * LABEL_SNAP + 0
       setLabelDrag({ ...labelDrag, delta: { x: snapTo(w.x - labelDrag.start.x), y: snapTo(w.y - labelDrag.start.y) } })
@@ -593,12 +641,9 @@ export default function Editor({ armId, loadExample, onToast }: Props) {
       const target = nearestTerminal(w, wiring.from)
       setWiring({ ...wiring, cursor: w, target, tap: target ? null : findTap(w, wiring.from) })
     } else if (armed) {
-      const def = getSymbol(armed)!
-      const at = snapPlacement(def, w, 1, armedOrient.rot, armedOrient.mirror)
-      const probe: Item = { id: 'ghost', symbolId: def.id, x: at.x, y: at.y, rot: armedOrient.rot, label: '', mirror: armedOrient.mirror || undefined }
-      const a = alignDelta(terminalPoints([probe]), terminalPoints(doc.items), { x: 0, y: 0 })
-      setGuides({ x: a.guideX, y: a.guideY })
-      setGhost({ x: at.x + a.delta.x, y: at.y + a.delta.y })
+      const p = placementAt(getSymbol(armed)!, w)
+      setGuides({ x: p.guideX, y: p.guideY })
+      setGhost(p.at)
     }
   }
 
@@ -613,6 +658,7 @@ export default function Editor({ armId, loadExample, onToast }: Props) {
         const mode = boxMode(marquee.from, marquee.to)
         const items = itemsInBox(doc.items, box, mode)
         const noteIds = notesInBox(doc.notes, box, mode)
+        const shapeIds = shapesInBox(doc.shapes, box, mode)
         const wireIds = wiresInBox(wireGeometries(doc), box, mode)
         setSelection(
           marquee.additive
@@ -620,8 +666,9 @@ export default function Editor({ armId, loadExample, onToast }: Props) {
                 items: [...new Set([...selection.items, ...items])],
                 wires: [...new Set([...selection.wires, ...wireIds])],
                 notes: [...new Set([...selection.notes, ...noteIds])],
+                shapes: [...new Set([...selection.shapes, ...shapeIds])],
               }
-            : { items, wires: wireIds, notes: noteIds },
+            : { items, wires: wireIds, notes: noteIds, shapes: shapeIds },
         )
       } else if (!marquee.additive) {
         setSelection(EMPTY)
@@ -632,8 +679,8 @@ export default function Editor({ armId, loadExample, onToast }: Props) {
       if (drag.delta.x || drag.delta.y) dispatch({ type: 'move', ids: drag.ids, dx: drag.delta.x, dy: drag.delta.y })
       else if (!drag.shift && drag.ids.length > 1) {
         // A plain click on one of several selected objects narrows the selection to it.
-        const isNote = doc.notes.some((n) => n.id === drag.clickId)
-        setSelection(isNote ? { items: [], wires: [], notes: [drag.clickId] } : { items: [drag.clickId], wires: [], notes: [] })
+        const c = drag.clickId
+        setSelection(doc.notes.some((n) => n.id === c) ? sel({ notes: [c] }) : doc.shapes.some((sh) => sh.id === c) ? sel({ shapes: [c] }) : sel({ items: [c] }))
       }
       setDrag(null)
     }
@@ -643,6 +690,18 @@ export default function Editor({ armId, loadExample, onToast }: Props) {
         dispatch({ type: 'label-offset', id: item.id, offset: { x: (item.labelOffset?.x ?? 0) + labelDrag.delta.x, y: (item.labelOffset?.y ?? 0) + labelDrag.delta.y } })
       }
       setLabelDrag(null)
+    }
+    if (drawing) {
+      const shape = shapeFromDrag(drawing.kind, uid('s'), drawing.from, drawing.to, drawing.constrain)
+      if (isUsable(shape)) {
+        dispatch({ type: 'add-shape', shape })
+        setSelection(sel({ shapes: [shape.id] }))
+      }
+      setDrawing(null)
+    }
+    if (shapeEdit) {
+      if (shapeEdit.moved) dispatch({ type: 'edit-shape', id: shapeEdit.id, shape: shapeEdit.shape })
+      setShapeEdit(null)
     }
     if (wireEdit) {
       if (wireEdit.moved) dispatch({ type: 'wire-route', id: wireEdit.id, via: wireEdit.via })
@@ -692,7 +751,7 @@ export default function Editor({ armId, loadExample, onToast }: Props) {
     if (!note) return
     if (noteRot(note) !== 0) return onToast('Rotated text is edited in the panel on the right.')
     editFocused.current = false
-    setSelection({ items: [], wires: [], notes: [note.id] })
+    setSelection(sel({ items: [], wires: [], notes: [note.id] }))
     setEditing({ note: { ...note }, isNew: false })
   }
 
@@ -706,7 +765,7 @@ export default function Editor({ armId, loadExample, onToast }: Props) {
       if (isNew) {
         if (!text.trim()) return
         dispatch({ type: 'add-note', note: { ...note, text } })
-        setSelection({ items: [], wires: [], notes: [note.id] })
+        setSelection(sel({ items: [], wires: [], notes: [note.id] }))
       } else if (!text.trim()) {
         dispatch({ type: 'delete', items: [], wires: [], notes: [note.id] })
         setSelection(EMPTY)
@@ -720,11 +779,11 @@ export default function Editor({ armId, loadExample, onToast }: Props) {
   /* ---------- export ---------- */
 
   const exportSvg = () => {
-    if (!doc.items.length && !doc.notes.length) return onToast('Nothing to export yet')
+    if (!doc.items.length && !doc.notes.length && !doc.shapes.length) return onToast('Nothing to export yet')
     downloadText('muriel-schematic.svg', diagramToSvg(doc).svg)
   }
   const exportPng = async () => {
-    if (!doc.items.length && !doc.notes.length) return onToast('Nothing to export yet')
+    if (!doc.items.length && !doc.notes.length && !doc.shapes.length) return onToast('Nothing to export yet')
     try {
       const { svg, width, height } = diagramToSvg(doc, { background: '#ffffff' })
       // Cap the bitmap so an A1 sheet does not ask the browser for a 30-megapixel canvas.
@@ -736,7 +795,7 @@ export default function Editor({ armId, loadExample, onToast }: Props) {
   }
 
   const print = () => {
-    if (!doc.items.length && !doc.notes.length && !doc.sheet.enabled) return onToast('Nothing to print yet')
+    if (!doc.items.length && !doc.notes.length && !doc.shapes.length && !doc.sheet.enabled) return onToast('Nothing to print yet')
     const { svg } = diagramToSvg(doc, { background: '#ffffff' })
     if (!printSheet(svg, doc.sheet.size)) onToast('Allow pop-ups to print, or export the SVG instead')
   }
@@ -757,6 +816,8 @@ export default function Editor({ armId, loadExample, onToast }: Props) {
     return routeWire(a, [a.dx, a.dy], { x: snap(wiring.cursor.x), y: snap(wiring.cursor.y) }, null)
   })()
   const marqueeBox = marquee?.moved ? normBox(marquee.from, marquee.to) : null
+  // A lone selected shape shows its resize handles.
+  const editableShape = selection.shapes.length === 1 && !selection.items.length && !selection.notes.length && !selection.wires.length ? (shown.shapes.find((sh) => sh.id === selection.shapes[0]) ?? null) : null
   // Handles appear when exactly one wire, and nothing else, is selected.
   const editableWire = (() => {
     if (selection.wires.length !== 1 || selection.items.length || selection.notes.length) return null
@@ -766,7 +827,7 @@ export default function Editor({ armId, loadExample, onToast }: Props) {
   })()
   const selCount = countOf(selection)
   const selectedIsEmpty = isEmpty(selection)
-  const allConflicts = conflictIds.length + conflictNoteIds.length
+  const allConflicts = conflictIds.length + conflictNoteIds.length + conflictShapeIds.length
 
   return (
     <div className="editor">
@@ -815,13 +876,13 @@ export default function Editor({ armId, loadExample, onToast }: Props) {
             <span>Sheet</span>
           </label>
           {allConflicts > 0 && (
-            <button className="chip-btn" onClick={() => setSelection({ items: conflictIds, wires: [], notes: conflictNoteIds })} title="Select what is outside the frame or under the title block">
+            <button className="chip-btn" onClick={() => setSelection(sel({ items: conflictIds, notes: conflictNoteIds, shapes: conflictShapeIds }))} title="Select what is outside the frame or under the title block">
               <WarnIcon /> {allConflicts} off sheet
             </button>
           )}
           <span className="grow" />
           <button className="btn small" onClick={() => { const ex = dolStarterExample(); dispatch({ type: 'load', doc: ex }); setSelection(EMPTY); requestAnimationFrame(() => fit(ex)) }} aria-label="Load example circuit" title="Load the motor starter example">Example</button>
-          <button className="btn small" onClick={() => { dispatch({ type: 'load', doc: { items: [], wires: [], notes: [], sheet: doc.sheet } }); setSelection(EMPTY) }} disabled={!doc.items.length && !doc.notes.length}>Clear</button>
+          <button className="btn small" onClick={() => { dispatch({ type: 'load', doc: { items: [], wires: [], notes: [], shapes: [], sheet: doc.sheet } }); setSelection(EMPTY) }} disabled={!doc.items.length && !doc.notes.length && !doc.shapes.length}>Clear</button>
           <button className="icon-btn" onClick={print} aria-label="Print or save as PDF" title="Print / save as PDF"><PrintIcon /></button>
           <button className="btn small" onClick={exportSvg} aria-label="Export SVG" title="Export as SVG">SVG</button>
           <button className="btn small primary" onClick={exportPng} aria-label="Export PNG" title="Export as PNG">PNG</button>
@@ -831,13 +892,18 @@ export default function Editor({ armId, loadExample, onToast }: Props) {
           <nav className="tool-rail" aria-label="Tools">
             <button className="icon-btn" aria-pressed={tool === 'select'} onClick={() => setTool('select')} aria-label="Select tool" title="Select (V). Drag empty space for a selection box"><CursorIcon /></button>
             <button className="icon-btn" aria-pressed={tool === 'text'} onClick={() => setTool('text')} aria-label="Text tool" title="Text (T). Click the canvas, type, then click away"><TextIcon /></button>
+            <span className="rail-sep" aria-hidden="true" />
+            <button className="icon-btn" aria-pressed={tool === 'line'} onClick={() => setTool('line')} aria-label="Line tool" title="Line (L). Drag to draw; Shift snaps to 45 degrees"><LineIcon /></button>
+            <button className="icon-btn" aria-pressed={tool === 'rect'} onClick={() => setTool('rect')} aria-label="Rectangle tool" title="Rectangle (B). Drag to draw; Shift makes a square"><RectIcon /></button>
+            <button className="icon-btn" aria-pressed={tool === 'ellipse'} onClick={() => setTool('ellipse')} aria-label="Ellipse tool" title="Ellipse (O). Drag to draw; Shift makes a circle"><EllipseIcon /></button>
+            <span className="rail-sep" aria-hidden="true" />
             <button className="icon-btn" aria-pressed={tool === 'pan'} onClick={() => setTool('pan')} aria-label="Pan tool" title="Pan (H). Or hold Space, or use the middle mouse button"><HandIcon /></button>
           </nav>
 
           <div className="canvas-wrap">
             <svg
               ref={svgRef}
-              className={`canvas${armed ? ' is-armed' : ''}${wiring ? ' is-wiring' : ''}${panMode ? ' is-pan' : ''}${tool === 'text' ? ' is-text' : ''}${panning ? ' is-panning' : ''}`}
+              className={`canvas${armed ? ' is-armed' : ''}${wiring ? ' is-wiring' : ''}${panMode ? ' is-pan' : ''}${tool === 'text' ? ' is-text' : ''}${drawTool ? ' is-draw' : ''}${panning ? ' is-panning' : ''}`}
               onPointerDown={onPointerDown}
               onPointerMove={onPointerMove}
               onPointerUp={onPointerUp}
@@ -865,6 +931,12 @@ export default function Editor({ armId, loadExample, onToast }: Props) {
                     <Prims prims={sheetArt} />
                   </g>
                 )}
+                <g className="shapes">
+                  {shown.shapes.map((sh) => (
+                    <ShapeView key={sh.id} shape={sh} selected={selection.shapes.includes(sh.id)} zoom={view.k} />
+                  ))}
+                  {drawing && <ShapeView shape={shapeFromDrag(drawing.kind, 'preview', drawing.from, drawing.to, drawing.constrain)} preview />}
+                </g>
                 <g className="wires">
                   {wires.map((w) => {
                     const st = wireStroke(wireStyles.get(w.id))
@@ -877,11 +949,29 @@ export default function Editor({ armId, loadExample, onToast }: Props) {
                           d={pointsToPath(w.points)}
                           style={{ strokeWidth: st.width + (selected || tapped ? 1 : 0), strokeDasharray: st.dash }}
                         />
-                        <path className="wire-hit" data-kind="wire" data-id={w.id} d={pointsToPath(w.points)} />
+                        <path className="wire-hit" data-kind="wire" data-id={w.id} d={pointsToPath(w.points)} style={{ strokeWidth: hitWidth(view.k) }} />
                       </g>
                     )
                   })}
                 </g>
+
+                {editableShape && (
+                  <g className="shape-handles">
+                    {handlesOf(editableShape).map((h) => (
+                      <rect
+                        key={h.id}
+                        className="handle shape"
+                        data-kind="shandle"
+                        data-id={editableShape.id}
+                        data-h={h.id}
+                        x={h.at.x - 5 / view.k}
+                        y={h.at.y - 5 / view.k}
+                        width={10 / view.k}
+                        height={10 / view.k}
+                      />
+                    ))}
+                  </g>
+                )}
 
                 {editableWire && (
                   <g className="wire-handles">
@@ -1050,7 +1140,7 @@ export default function Editor({ armId, loadExample, onToast }: Props) {
               </g>
             </svg>
 
-            {!doc.items.length && !doc.notes.length && !armed && !editing && (
+            {!doc.items.length && !doc.notes.length && !doc.shapes.length && !armed && !editing && !drawTool && (
               <div className="canvas-empty">
                 <p><strong>Empty canvas</strong></p>
                 <p className="muted">Pick a symbol on the left, then click here to place it. Drag from one terminal dot to another to draw a wire.</p>
@@ -1059,6 +1149,11 @@ export default function Editor({ armId, loadExample, onToast }: Props) {
             {armedDef && (
               <div className="canvas-hint" role="status">
                 Placing <strong>{armedDef.name}</strong>. Click to place, <kbd>R</kbd> rotate, <kbd>F</kbd> flip, <kbd>Esc</kbd> stop
+              </div>
+            )}
+            {drawTool && !armedDef && (
+              <div className="canvas-hint" role="status">
+                Drag to draw a {tool === 'line' ? 'line' : tool === 'rect' ? 'rectangle' : 'ellipse'}. <kbd>Shift</kbd> {tool === 'line' ? 'snaps to 45°' : 'keeps it square'}, <kbd>Esc</kbd> to stop
               </div>
             )}
             {tool === 'text' && !armedDef && (
@@ -1115,6 +1210,7 @@ export default function Editor({ armId, loadExample, onToast }: Props) {
           onProps={(id, patch) => dispatch({ type: 'props', id, patch })}
           onResetLabel={(id) => dispatch({ type: 'label-offset', id, offset: null })}
           onWireStyle={(patch) => dispatch({ type: 'wire-style', ids: selection.wires, patch })}
+          onShapeStyle={(patch) => dispatch({ type: 'shape-style', ids: selection.shapes, patch })}
           onResetRoute={(id) => dispatch({ type: 'wire-route', id, via: null })}
           onNote={(id, patch) => dispatch({ type: 'edit-note', id, patch })}
           onSheet={(patch) => dispatch({ type: 'sheet', patch })}

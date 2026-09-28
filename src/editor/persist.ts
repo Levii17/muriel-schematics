@@ -1,6 +1,6 @@
 import { getSymbol } from '../data'
 import { SCALES } from '../data/scale'
-import type { Doc, TextNote, Wire } from './model'
+import type { Doc, Shape, TextNote, Wire, WireStyle } from './model'
 import { mergeSheet } from './sheet'
 
 /**
@@ -35,7 +35,13 @@ export function sanitizeDoc(raw: unknown): Doc | null {
     const o = i.labelOffset as unknown as { x?: unknown; y?: unknown } | undefined
     if (o !== undefined && !(o && Number.isFinite(o.x) && Number.isFinite(o.y))) delete i.labelOffset
   }
-  return { items, wires, notes: sanitizeNotes((r as { notes?: unknown }).notes), sheet: mergeSheet(r.sheet) }
+  return {
+    items,
+    wires,
+    notes: sanitizeNotes((r as { notes?: unknown }).notes),
+    shapes: sanitizeShapes((r as { shapes?: unknown }).shapes),
+    sheet: mergeSheet(r.sheet),
+  }
 }
 
 const DASH_KINDS = ['dashed', 'dotted', 'dashdot']
@@ -75,5 +81,37 @@ export function sanitizeNotes(raw: unknown): TextNote[] {
     if (typeof n.align === 'string' && ALIGNS.includes(n.align) && n.align !== 'start') note.align = n.align as TextNote['align']
     if (n.rot === 90 || n.rot === 180 || n.rot === 270) note.rot = n.rot
     return [note]
+  })
+}
+
+const MAX_SHAPES = 2000
+const num = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v)
+
+function cleanStyle(raw: unknown): WireStyle | undefined {
+  if (!raw || typeof raw !== 'object') return undefined
+  const st = raw as { dash?: unknown; width?: unknown }
+  const out: WireStyle = {}
+  if (typeof st.dash === 'string' && DASH_KINDS.includes(st.dash)) out.dash = st.dash as WireStyle['dash']
+  if (st.width === 1 || st.width === 3) out.width = st.width
+  return Object.keys(out).length ? out : undefined
+}
+
+/** Keep only well-formed shapes, and give them only the fields their kind uses. */
+export function sanitizeShapes(raw: unknown): Shape[] {
+  if (!Array.isArray(raw)) return []
+  return raw.slice(0, MAX_SHAPES).flatMap((r): Shape[] => {
+    if (!r || typeof r.id !== 'string') return []
+    const style = cleanStyle(r.style)
+    const base = style ? { style } : {}
+    if (r.kind === 'line' && num(r.x1) && num(r.y1) && num(r.x2) && num(r.y2)) {
+      return [{ id: r.id, kind: 'line', x1: r.x1, y1: r.y1, x2: r.x2, y2: r.y2, ...base, ...(r.arrow === 'end' || r.arrow === 'both' ? { arrow: r.arrow } : {}) }]
+    }
+    if (r.kind === 'rect' && num(r.x) && num(r.y) && num(r.w) && num(r.h) && r.w > 0 && r.h > 0) {
+      return [{ id: r.id, kind: 'rect', x: r.x, y: r.y, w: r.w, h: r.h, ...base, ...(r.fill === true ? { fill: true } : {}), ...(num(r.radius) && r.radius > 0 ? { radius: Math.min(r.radius, 100) } : {}) }]
+    }
+    if (r.kind === 'ellipse' && num(r.cx) && num(r.cy) && num(r.rx) && num(r.ry) && r.rx > 0 && r.ry > 0) {
+      return [{ id: r.id, kind: 'ellipse', cx: r.cx, cy: r.cy, rx: r.rx, ry: r.ry, ...base, ...(r.fill === true ? { fill: true } : {}) }]
+    }
+    return []
   })
 }

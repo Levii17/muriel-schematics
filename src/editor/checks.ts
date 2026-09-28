@@ -1,6 +1,7 @@
 import { labelBox } from './labels'
 import type { Doc, Rect } from './model'
 import { defOf, itemBounds, noteBounds, scaleDrawing, snap } from './model'
+import { shapeBounds } from './shapes'
 import { BLOCK_H, BLOCK_W, PAPER_ORDER, blockBox, frameBox } from './sheet'
 import type { PaperSize } from './sheet'
 
@@ -25,12 +26,18 @@ export function conflictingNoteIds(doc: Doc): string[] {
   return doc.notes.filter((n) => misplaced(doc, noteBounds(n))).map((n) => n.id)
 }
 
-/** True when the sheet is on and at least one part or note is misplaced. Nothing is moved automatically. */
-export const sheetConflicts = (doc: Doc) => conflictingItemIds(doc).length + conflictingNoteIds(doc).length > 0
+/** The same test for graphic shapes. */
+export function conflictingShapeIds(doc: Doc): string[] {
+  if (!doc.sheet.enabled) return []
+  return doc.shapes.filter((s) => misplaced(doc, shapeBounds(s))).map((s) => s.id)
+}
 
-/** Bounding box of every part (with its label block) and note, or null for an empty drawing. */
+/** True when the sheet is on and at least one part, note or shape is misplaced. Nothing is moved automatically. */
+export const sheetConflicts = (doc: Doc) => conflictingItemIds(doc).length + conflictingNoteIds(doc).length + conflictingShapeIds(doc).length > 0
+
+/** Bounding box of every part (with its label block), note and shape, or null for an empty drawing. */
 export function drawingBox(doc: Doc): Rect | null {
-  if (!doc.items.length && !doc.notes.length) return null
+  if (!doc.items.length && !doc.notes.length && !doc.shapes.length) return null
   let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity
   const add = (b: Rect) => {
     x0 = Math.min(x0, b.x)
@@ -44,6 +51,7 @@ export function drawingBox(doc: Doc): Rect | null {
     if (lb) add(lb)
   }
   for (const n of doc.notes) add(noteBounds(n))
+  for (const s of doc.shapes) add(shapeBounds(s))
   return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 }
 }
 

@@ -1,5 +1,6 @@
-import type { Item, Pt, Rot, TextNote, Wire } from './model'
+import type { Item, Pt, Rot, Shape, TextNote, Wire } from './model'
 import { anchorOffset, defOf, itemBounds, itemMirror, itemScale, noteBounds, noteRot, snap } from './model'
+import { flipShapeH, flipShapeV, shapeBounds, shapeCentre, snapShape, turnShape } from './shapes'
 
 export type Transform = 'rot90' | 'flipH' | 'flipV'
 
@@ -7,6 +8,7 @@ export type Transform = 'rot90' | 'flipH' | 'flipV'
 export interface Content {
   items: Item[]
   notes: TextNote[]
+  shapes?: Shape[]
   /** When given, waypoints of wires between two moved parts travel with them. */
   wires?: Wire[]
 }
@@ -27,7 +29,7 @@ export function snapEven(v: number, step: number): number {
  * Centre of the selection's bounding box on a grid. Flips only need a 10 px grid (twice a multiple of 10
  * is a multiple of 20, so parts stay on the 20 px lattice); turns need the full 20 px grid.
  */
-export function groupCenter(items: Item[], notes: TextNote[] = [], step = 20): Pt {
+export function groupCenter(items: Item[], notes: TextNote[] = [], step = 20, shapes: Shape[] = []): Pt {
   let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity
   const add = (b: { x: number; y: number; w: number; h: number }) => {
     x0 = Math.min(x0, b.x)
@@ -37,6 +39,7 @@ export function groupCenter(items: Item[], notes: TextNote[] = [], step = 20): P
   }
   for (const it of items) add(itemBounds(it, defOf(it)))
   for (const n of notes) add(noteBounds(n))
+  for (const sh of shapes) add(shapeBounds(sh))
   return { x: snapEven((x0 + x1) / 2, step), y: snapEven((y0 + y1) / 2, step) }
 }
 
@@ -72,10 +75,11 @@ const clean = (v: number) => Math.round(v * 1e6) / 1e6 + 0
 export function transformDoc(content: Content, ids: string[], kind: Transform): Content {
   const items = content.items.filter((i) => ids.includes(i.id))
   const notes = content.notes.filter((n) => ids.includes(n.id))
-  if (!items.length && !notes.length) return content
-  const single = items.length + notes.length === 1
+  const shapes = (content.shapes ?? []).filter((sh) => ids.includes(sh.id))
+  if (!items.length && !notes.length && !shapes.length) return content
+  const single = items.length + notes.length + shapes.length === 1
   const anchor = single ? (items[0] ?? notes[0]) : null
-  const c: Pt = anchor ? { x: anchor.x, y: anchor.y } : groupCenter(items, notes, kind === 'rot90' ? 20 : 10)
+  const c: Pt = anchor ? { x: anchor.x, y: anchor.y } : groupCenter(items, notes, kind === 'rot90' ? 20 : 10, shapes)
 
   const moved = (x: number, y: number): Pt =>
     kind === 'rot90' ? { x: c.x - (y - c.y), y: c.y + (x - c.x) } : kind === 'flipH' ? { x: 2 * c.x - x, y } : { x, y: 2 * c.y - y }
@@ -86,8 +90,21 @@ export function transformDoc(content: Content, ids: string[], kind: Transform): 
       : w,
   )
 
+  const shapeOut = content.shapes?.map((sh) => {
+    if (!ids.includes(sh.id)) return sh
+    if (single) {
+      // A lone shape turns or flips about itself. A line turns about its first end so its points stay on the grid;
+      // a box or ellipse turns about its centre and is put back on the grid. A symmetric shape flipped alone is unchanged.
+      if (kind === 'rot90') return sh.kind === 'line' ? turnShape(sh, { x: sh.x1, y: sh.y1 }) : snapShape(turnShape(sh, shapeCentre(sh)))
+      if (sh.kind !== 'line') return sh
+      return kind === 'flipH' ? flipShapeH(sh, shapeCentre(sh).x) : flipShapeV(sh, shapeCentre(sh).y)
+    }
+    return kind === 'rot90' ? turnShape(sh, c) : kind === 'flipH' ? flipShapeH(sh, c.x) : flipShapeV(sh, c.y)
+  })
+
   return {
     ...(wires ? { wires } : {}),
+    ...(shapeOut ? { shapes: shapeOut } : {}),
     items: content.items.map((it) => {
       if (!ids.includes(it.id)) return it
       let { x, y } = moved(it.x, it.y)

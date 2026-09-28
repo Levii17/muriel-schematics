@@ -1,5 +1,5 @@
 import { getSymbol } from '../data'
-import type { Doc, Item, TextNote, Wire } from './model'
+import type { Doc, Item, Shape, TextNote, Wire } from './model'
 import { nextLabel, pivotOf } from './model'
 import { defaultSheet } from './sheet'
 
@@ -63,5 +63,8 @@ export function dolStarterExample(): Doc {
       revision: 'A',
     },
   }
-  return { items, wires, notes, sheet }
+  // A dash-dot outline around the starter's contactor and overload relay, as an enclosure boundary.
+  const shapes: Shape[] = [{ id: 'e-s1', kind: 'rect', x: OX - 40, y: OY + 240, w: 400, h: 280, style: { dash: 'dashdot', width: 1 } }]
+  notes.push({ id: 'e-n3', x: OX - 32, y: OY + 232, text: 'Motor control panel MCC-1', size: 10 })
+  return { items, wires, notes, shapes, sheet }
 }

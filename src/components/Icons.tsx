@@ -41,3 +41,6 @@ export const AlignBottomIcon = () => <Icon><path d="M4 20h16M8 4v12M14 9v7" /></
 export const DistributeHIcon = () => <Icon><path d="M4 4v16M20 4v16M10 8h4v8h-4z" /></Icon>
 export const DistributeVIcon = () => <Icon><path d="M4 4h16M4 20h16M8 10h8v4H8z" /></Icon>
 export const TextIcon = () => <Icon><path d="M5 6V4h14v2M12 4v16M9 20h6" /></Icon>
+export const LineIcon = () => <Icon><path d="M5 19 19 5" /><circle cx="5" cy="19" r="1.4" fill="currentColor" /><circle cx="19" cy="5" r="1.4" fill="currentColor" /></Icon>
+export const RectIcon = () => <Icon><rect x="4" y="6" width="16" height="12" rx="1" /></Icon>
+export const EllipseIcon = () => <Icon><ellipse cx="12" cy="12" rx="8" ry="6" /></Icon>

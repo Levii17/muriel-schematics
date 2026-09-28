@@ -1,8 +1,9 @@
 import { getSymbol } from '../data'
 import { bodyToSvg, escapeXml, styledGroup } from '../lib/svg'
 import { LABEL_LINE_H, LABEL_STYLE, labelBox, labelLines, labelPos } from './labels'
-import type { Doc, TextNote } from './model'
+import type { Doc, Shape, TextNote } from './model'
 import { PAPER, sheetPrims } from './sheet'
+import { arrowsOf, shapeBounds } from './shapes'
 import { junctions, wireGeometries, wireStroke } from './wires'
 import { NOTE_LINE, defOf, itemBounds, itemMirror, itemScale, noteBounds, noteLines, noteRot, pivotOf, pointsToPath, symbolBody } from './model'
 
@@ -20,6 +21,25 @@ function labelSvg(item: Doc['items'][number], ink: string): string {
       return `<text x="${p.x}" y="${p.y + i * LABEL_LINE_H}" font-size="${style.size}" font-weight="${weight}" fill="${ink}" stroke="none"${opacity}>${escapeXml(l.text)}</text>`
     })
     .join('')
+}
+
+/** SVG for one graphic shape. Fill is a faint tint of the ink colour; stroke style follows the wire styles. */
+export function shapeSvg(s: Shape, ink: string): string {
+  const st = wireStroke(s.style)
+  const extra = `${st.width !== 2 ? ` stroke-width="${st.width}"` : ''}${st.dash ? ` stroke-dasharray="${st.dash}"` : ''}`
+  const tint = (s.kind !== 'line' && s.fill ? ` fill="${ink}" fill-opacity="0.07"` : '')
+  switch (s.kind) {
+    case 'line': {
+      const heads = arrowsOf(s)
+        .map((h) => `<polygon points="${h.map((p) => `${Math.round(p.x * 100) / 100},${Math.round(p.y * 100) / 100}`).join(' ')}" fill="${ink}" stroke="none"/>`)
+        .join('')
+      return `<line x1="${s.x1}" y1="${s.y1}" x2="${s.x2}" y2="${s.y2}"${extra}/>${heads}`
+    }
+    case 'rect':
+      return `<rect x="${s.x}" y="${s.y}" width="${s.w}" height="${s.h}"${s.radius ? ` rx="${s.radius}"` : ''}${tint}${extra}/>`
+    case 'ellipse':
+      return `<ellipse cx="${s.cx}" cy="${s.cy}" rx="${s.rx}" ry="${s.ry}"${tint}${extra}/>`
+  }
 }
 
 /** SVG for one free-text note. Empty lines get a no-break space so they keep their height. */
@@ -60,6 +80,7 @@ export function diagramToSvg(doc: Doc, opts: { ink?: string; background?: string
       if (lb) grow(lb)
     }
     for (const n of doc.notes) grow(noteBounds(n))
+    for (const sh of doc.shapes) grow(shapeBounds(sh))
     if (!isFinite(minX)) {
       minX = minY = 0
       maxX = maxY = 200
@@ -92,6 +113,7 @@ export function diagramToSvg(doc: Doc, opts: { ink?: string; background?: string
     .join('')
   const labels = doc.items.map((i) => labelSvg(i, ink)).join('')
   const notes = doc.notes.map((n) => noteSvg(n, ink)).join('')
+  const shapes = doc.shapes.map((sh) => shapeSvg(sh, ink)).join('')
   const paper = sheetOn ? `<rect x="0" y="0" width="${w}" height="${h}" fill="#ffffff" stroke="none"/>` : ''
   const sheet = sheetOn ? bodyToSvg(sheetPrims(doc.sheet)) : ''
   const bg = !sheetOn && background ? `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${background}"/>` : ''
@@ -101,7 +123,7 @@ export function diagramToSvg(doc: Doc, opts: { ink?: string; background?: string
     `<svg xmlns="http://www.w3.org/2000/svg" ${size} viewBox="${x} ${y} ${w} ${h}">` +
     bg +
     paper +
-    styledGroup(sheet + wires + items + dots + labels + notes, ink) +
+    styledGroup(sheet + shapes + wires + items + dots + labels + notes, ink) +
     `</svg>`
   return { svg, width: w, height: h }
 }

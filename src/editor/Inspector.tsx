@@ -7,7 +7,7 @@ import {
 import { SCALES } from '../data/scale'
 import type { AlignMode, Axis } from './align'
 import type { FitPlan } from './checks'
-import type { Doc, Endpoint, Item, TextNote, Wire, WireStyle } from './model'
+import type { Doc, Endpoint, Item, Shape, TextNote, Wire, WireStyle } from './model'
 import { NOTE_SIZES, defOf, itemScale, noteRot, scaleDrawing } from './model'
 import type { Selection } from './select'
 import { FIELD_DEFS, PAPER_ORDER } from './sheet'
@@ -24,6 +24,7 @@ export interface InspectorProps {
   onResetLabel: (id: string) => void
   onWireStyle: (patch: { dash?: WireStyle['dash'] | null; width?: 1 | 2 | 3 | null }) => void
   onResetRoute: (id: string) => void
+  onShapeStyle: (patch: { dash?: WireStyle['dash'] | null; width?: 1 | 2 | 3 | null; arrow?: 'end' | 'both' | null; fill?: boolean; radius?: number | null }) => void
   onNote: (id: string, patch: Partial<Omit<TextNote, 'id'>>) => void
   onSheet: (patch: { enabled?: boolean; size?: PaperSize; fields?: Partial<TitleFields> }) => void
   onResize: (dir: 1 | -1) => void
@@ -84,12 +85,17 @@ export function Inspector(p: InspectorProps) {
   const items = doc.items.filter((i) => selection.items.includes(i.id))
   const wires = doc.wires.filter((w) => selection.wires.includes(w.id))
   const notes = doc.notes.filter((n) => selection.notes.includes(n.id))
+  const shapes = doc.shapes.filter((sh) => selection.shapes.includes(sh.id))
   const name = (e: Endpoint) => {
     const it = doc.items.find((i) => i.id === e.item)
     return it?.symbolId === 'junction' ? 'junction' : `${it?.label || 'part'}·${e.term}`
   }
 
-  if (items.length === 0 && notes.length === 0 && wires.length > 0) {
+  if (items.length === 0 && notes.length === 0 && wires.length === 0 && shapes.length > 0) {
+    return <ShapeFields shapes={shapes} onStyle={p.onShapeStyle} onRotate={p.onRotate} onFlip={p.onFlip} onDuplicate={p.onDuplicate} onDelete={p.onDelete} />
+  }
+
+  if (items.length === 0 && notes.length === 0 && shapes.length === 0 && wires.length > 0) {
     return <WireFields wires={wires} ends={wires.length === 1 ? `${name(wires[0].a)} → ${name(wires[0].b)}` : ''} onStyle={p.onWireStyle} onReset={p.onResetRoute} onDelete={p.onDelete} />
   }
 
@@ -135,10 +141,11 @@ export function Inspector(p: InspectorProps) {
     return <NoteFields note={notes[0]} onNote={p.onNote} onRotate={p.onRotate} onDuplicate={p.onDuplicate} onDelete={p.onDelete} />
   }
 
-  if (items.length + notes.length > 1) {
+  if (items.length + notes.length + shapes.length > 1 || (items.length + notes.length + shapes.length === 1 && wires.length > 0 && items.length === 0)) {
     const bits = [
       items.length && `${items.length} ${items.length === 1 ? 'part' : 'parts'}`,
       notes.length && `${notes.length} ${notes.length === 1 ? 'note' : 'notes'}`,
+      shapes.length && `${shapes.length} ${shapes.length === 1 ? 'shape' : 'shapes'}`,
       wires.length && `${wires.length} ${wires.length === 1 ? 'wire' : 'wires'}`,
     ].filter(Boolean)
     return (
@@ -163,6 +170,7 @@ export function Inspector(p: InspectorProps) {
       <h3>Shortcuts</h3>
       <dl className="shortcuts">
         <dt><kbd>V</kbd> <kbd>H</kbd> <kbd>T</kbd></dt><dd>Select / Pan / Text tool</dd>
+        <dt><kbd>L</kbd> <kbd>B</kbd> <kbd>O</kbd></dt><dd>Line / Box / Ellipse tool. Shift constrains</dd>
         <dt>Double-click text</dt><dd>Edit it in place</dd>
         <dt>Drag onto a wire</dt><dd>Join a wire to the middle of another (adds a junction)</dd>
         <dt>Wire handles</dt><dd>Round: slide a stretch sideways. Square: move a bend</dd>
@@ -428,6 +436,88 @@ function WireFields({
         </>
       )}
       <button className="btn danger" onClick={onDelete}><TrashIcon /> Delete {single ? 'wire' : 'wires'}</button>
+    </div>
+  )
+}
+
+const ARROW_OPTIONS: { value: 'end' | 'both' | null; label: string }[] = [
+  { value: null, label: 'None' },
+  { value: 'end', label: 'End' },
+  { value: 'both', label: 'Both' },
+]
+const RADIUS_OPTIONS = [0, 10, 20, 30]
+
+const KIND_NAME: Record<Shape['kind'], string> = { line: 'Line', rect: 'Rectangle', ellipse: 'Ellipse' }
+
+function ShapeFields({
+  shapes, onStyle, onRotate, onFlip, onDuplicate, onDelete,
+}: Pick<InspectorProps, 'onRotate' | 'onFlip' | 'onDuplicate' | 'onDelete'> & { shapes: Shape[]; onStyle: InspectorProps['onShapeStyle'] }) {
+  const same = <T,>(get: (s: Shape) => T): T | undefined => (shapes.every((s) => get(s) === get(shapes[0])) ? get(shapes[0]) : undefined)
+  const dash = same((s) => s.style?.dash ?? null)
+  const width = same((s) => s.style?.width ?? 2)
+  const kinds = new Set(shapes.map((s) => s.kind))
+  const single = shapes.length === 1 ? shapes[0] : null
+  const allLines = kinds.size === 1 && kinds.has('line')
+  const boxes = shapes.filter((s): s is Exclude<Shape, { kind: 'line' }> => s.kind !== 'line')
+  return (
+    <div className="inspector-body">
+      <p className="eyebrow">Selected</p>
+      <h2>{single ? KIND_NAME[single.kind] : `${shapes.length} shapes`}</h2>
+      <div className="field">
+        <span>Line</span>
+        <div className="row" role="group" aria-label="Line style">
+          {DASH_OPTIONS.map((o) => (
+            <button key={o.label} className="btn small" aria-pressed={dash === o.value} onClick={() => onStyle({ dash: o.value })}>{o.label}</button>
+          ))}
+        </div>
+      </div>
+      <div className="field">
+        <span>Weight</span>
+        <div className="row" role="group" aria-label="Line weight">
+          {WIDTH_OPTIONS.map((o) => (
+            <button key={o.label} className="btn small" aria-pressed={width === o.value} onClick={() => onStyle({ width: o.value })}>{o.label}</button>
+          ))}
+        </div>
+      </div>
+      {allLines && (
+        <div className="field">
+          <span>Arrowheads</span>
+          <div className="row" role="group" aria-label="Arrowheads">
+            {ARROW_OPTIONS.map((o) => (
+              <button key={o.label} className="btn small" aria-pressed={same((s) => (s.kind === 'line' ? (s.arrow ?? null) : null)) === o.value} onClick={() => onStyle({ arrow: o.value })}>{o.label}</button>
+            ))}
+          </div>
+        </div>
+      )}
+      {boxes.length > 0 && (
+        <label className="switch">
+          <input
+            type="checkbox"
+            checked={boxes.every((s) => s.fill === true)}
+            onChange={(e) => onStyle({ fill: e.target.checked })}
+          />
+          <span>Tinted fill</span>
+        </label>
+      )}
+      {kinds.size === 1 && kinds.has('rect') && (
+        <label className="field">
+          <span>Corner radius</span>
+          <select className="select" value={same((s) => (s.kind === 'rect' ? (s.radius ?? 0) : 0)) ?? ''} onChange={(e) => onStyle({ radius: Number(e.target.value) || null })}>
+            {same((s) => (s.kind === 'rect' ? (s.radius ?? 0) : 0)) === undefined && <option value="">Mixed</option>}
+            {RADIUS_OPTIONS.map((r) => (
+              <option key={r} value={r}>{r === 0 ? 'Square' : `${r} px`}</option>
+            ))}
+          </select>
+        </label>
+      )}
+      <div className="row">
+        <button className="btn small" onClick={onRotate} title="Rotate (R)"><RotateIcon /> Rotate</button>
+        <button className="btn small" onClick={() => onFlip('h')} title="Flip left-right (F)"><FlipHIcon /> Flip H</button>
+        <button className="btn small" onClick={() => onFlip('v')} title="Flip top-bottom (Shift+F)"><FlipVIcon /> Flip V</button>
+        <button className="btn small" onClick={onDuplicate} title="Duplicate (Ctrl+D)"><DuplicateIcon /> Duplicate</button>
+        <button className="btn small danger" onClick={onDelete} title="Delete (Del)"><TrashIcon /> Delete</button>
+      </div>
+      <p className="muted small">Drag the square handles to resize. Shapes are only drawings: they never connect to parts or wires.</p>
     </div>
   )
 }

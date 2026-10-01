@@ -8,7 +8,7 @@ import '@fontsource/ibm-plex-mono/latin-500.css'
 import './styles/tokens.css'
 import './styles/app.css'
 import './styles/editor.css'
-import App from './App'
+import App from '@/app/App'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

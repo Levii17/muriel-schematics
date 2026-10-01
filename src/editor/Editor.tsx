@@ -1,75 +1,79 @@
-import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import type { PointerEvent as ReactPointerEvent } from 'react'
-import { CATEGORIES, SYMBOLS, getSymbol } from '../data'
-import type { SymbolDef } from '../data/types'
-import { GlyphBody, Prims, SymbolSvg } from '../components/Glyph'
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
+
+import type { AlignMode, Axis } from '@/editor/actions/align'
+import { conflictingItemIds, conflictingNoteIds, conflictingShapeIds, planFit, planShrink } from '@/editor/actions/checks'
+import type { Payload } from '@/editor/actions/clipboard'
+import { clonePayload, copyPayload } from '@/editor/actions/clipboard'
+import { initHistory, reducer } from '@/editor/actions/history'
+import type { Selection } from '@/editor/actions/select'
 import {
-  CursorIcon, DuplicateIcon, FitIcon, FlipHIcon, FlipVIcon, HandIcon, MinusIcon, PlusIcon, PrintIcon, RedoIcon, RotateIcon,
-  EllipseIcon, LineIcon, RectIcon, TextIcon, TrashIcon, UndoIcon, WarnIcon,
-} from '../components/Icons'
-import { loadJson, saveJson } from '../lib/hooks'
-import { printSheet } from '../lib/print'
-import { searchSymbols } from '../lib/search'
-import { downloadBlob, downloadText, svgToPngBlob } from '../lib/svg'
-import type { AlignMode, Axis } from './align'
-import { conflictingItemIds, conflictingNoteIds, conflictingShapeIds, planFit, planShrink } from './checks'
-import type { Payload } from './clipboard'
-import { clonePayload, copyPayload } from './clipboard'
+  EMPTY,
+  bodyIds,
+  boxMode,
+  countOf,
+  isEmpty,
+  itemsInBox,
+  normBox,
+  notesInBox,
+  sel,
+  shapesInBox,
+  toggle,
+  wiresInBox,
+} from '@/editor/actions/select'
+import { nextOrientation } from '@/editor/actions/transform'
+import { diagramToSvg } from '@/editor/io/export'
+import { sanitizeDoc } from '@/editor/io/persist'
+import { nextLabel, scaleDrawing, uid } from '@/editor/model/doc'
+import { defOf, itemBounds, itemMirror, itemScale, snapPlacement, terminalWorld } from '@/editor/model/geometry'
+import { LABEL_LINE_H, labelBox, labelLines, labelPos } from '@/editor/model/labels'
+import { alignDelta, terminalPoints } from '@/editor/model/magnet'
+import { NOTE_LINE, noteBounds, noteLines, noteLocalBox, noteRot } from '@/editor/model/notes'
+import { pointsToPath, routeWire } from '@/editor/model/routing'
+import type { HandleId } from '@/editor/model/shapes'
+import { handlesOf, isUsable, moveShape, resizeShape, shapeBounds, shapeFromDrag } from '@/editor/model/shapes'
+import { PAPER, paperBox, sheetPrims } from '@/editor/model/sheet'
+import type { Doc, Endpoint, Item, Rot, Shape, TextNote } from '@/editor/model/types'
+import { junctions, wireGeometries } from '@/editor/model/wires'
+import { JUNCTION_SYMBOL, JUNCTION_TERMINAL, nearestWirePoint, shiftSegment, shiftWires, tapPoint, wireStroke } from '@/editor/model/wires'
+import { Inspector } from '@/editor/ui/Inspector'
+import { PaletteButton } from '@/editor/ui/PaletteButton'
+import { ShapeView, hitWidth } from '@/editor/ui/ShapeView'
+import { isTextTarget, usesSpace } from '@/editor/ui/keys'
+import type { Marquee, Tool, View, WireEdit } from '@/editor/ui/state'
+import { DRAG_THRESHOLD, LABEL_SNAP, MAX_ZOOM, MIN_ZOOM, SHAPE_TOOLS, SNAP_RADIUS, STORAGE_KEY } from '@/editor/ui/state'
+import {
+  CursorIcon,
+  DuplicateIcon,
+  FitIcon,
+  FlipHIcon,
+  FlipVIcon,
+  HandIcon,
+  MinusIcon,
+  PlusIcon,
+  PrintIcon,
+  RedoIcon,
+  RotateIcon,
+  EllipseIcon,
+  LineIcon,
+  RectIcon,
+  TextIcon,
+  TrashIcon,
+  UndoIcon,
+  WarnIcon,
+} from '@/shared/Icons'
+import { downloadBlob, downloadText, svgToPngBlob } from '@/shared/download'
+import type { Pt } from '@/shared/geometry'
+import { snap } from '@/shared/geometry'
+import { printSheet } from '@/shared/print'
+import { loadJson, saveJson } from '@/shared/storage'
+import { CATEGORIES, SYMBOLS, getSymbol } from '@/symbols'
+import { GlyphBody, Prims } from '@/symbols/Glyph'
+import { pivotOf } from '@/symbols/geometry'
+import { searchSymbols } from '@/symbols/search'
+import type { SymbolDef } from '@/symbols/types'
+
 import { dolStarterExample } from './examples'
-import { diagramToSvg, junctions, wireGeometries } from './export'
-import { JUNCTION_SYMBOL, JUNCTION_TERMINAL, nearestWirePoint, shiftSegment, shiftWires, tapPoint, wireStroke } from './wires'
-import { initHistory, reducer } from './history'
-import { Inspector } from './Inspector'
-import { isTextTarget, usesSpace } from './keys'
-import { LABEL_LINE_H, labelBox, labelLines, labelPos } from './labels'
-import type { Doc, Endpoint, Item, Pt, Rot, Shape, TextNote } from './model'
-import {
-  NOTE_LINE, alignDelta, defOf, itemBounds, itemMirror, itemScale, nextLabel, noteBounds, noteLines, noteLocalBox, noteRot, pivotOf,
-  pointsToPath, routeWire, scaleDrawing, snap, snapPlacement, terminalPoints, terminalWorld, uid,
-} from './model'
-import { sanitizeDoc } from './persist'
-import type { Selection } from './select'
-import { EMPTY, bodyIds, boxMode, countOf, isEmpty, itemsInBox, normBox, notesInBox, sel, shapesInBox, toggle, wiresInBox } from './select'
-import { PAPER, paperBox, sheetPrims } from './sheet'
-import { ShapeView, hitWidth } from './ShapeView'
-import { handlesOf, isUsable, moveShape, resizeShape, shapeBounds, shapeFromDrag } from './shapes'
-import type { HandleId } from './shapes'
-import { nextOrientation } from './transform'
-
-const STORAGE_KEY = 'es.doc.v1'
-const MIN_ZOOM = 0.3
-const MAX_ZOOM = 3
-const SNAP_RADIUS = 18
-/** Screen pixels a press must travel before it counts as a drag rather than a click. */
-const DRAG_THRESHOLD = 4
-const LABEL_SNAP = 5
-
-type Tool = 'select' | 'pan' | 'text' | 'line' | 'rect' | 'ellipse'
-const SHAPE_TOOLS: Tool[] = ['line', 'rect', 'ellipse']
-interface View {
-  x: number
-  y: number
-  k: number
-}
-/**
- * A change being dragged on the selected wire. `via` is the full waypoint list as it would be if released now.
- * "move" drags one waypoint; "shift" slides the segment `k` of the current route sideways.
- */
-type WireEdit = {
-  id: string
-  via: Pt[]
-  sx: number
-  sy: number
-  moved: boolean
-} & ({ mode: 'move'; index: number } | { mode: 'shift'; pts: Pt[]; k: number })
-interface Marquee {
-  from: Pt
-  to: Pt
-  additive: boolean
-  sx: number
-  sy: number
-  moved: boolean
-}
 
 interface Props {
   armId: string | null
@@ -1234,13 +1238,4 @@ export default function Editor({ armId, loadExample, onToast }: Props) {
     setArmed((cur) => (cur === id ? null : id))
     setArmedOrient({ rot: 0, mirror: false })
   }
-}
-
-function PaletteButton({ def, armed, onPick }: { def: SymbolDef; armed: boolean; onPick: () => void }) {
-  return (
-    <button type="button" className={`palette-item${armed ? ' armed' : ''}`} onClick={onPick} aria-pressed={armed}>
-      <SymbolSvg def={def} className="mini-glyph" />
-      <span>{def.name}</span>
-    </button>
-  )
 }

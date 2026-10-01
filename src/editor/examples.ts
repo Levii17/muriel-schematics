@@ -1,7 +1,8 @@
-import { getSymbol } from '../data'
-import type { Doc, Item, Shape, TextNote, Wire } from './model'
-import { nextLabel, pivotOf } from './model'
-import { defaultSheet } from './sheet'
+import { nextLabel } from '@/editor/model/doc'
+import { defaultSheet } from '@/editor/model/sheet'
+import type { Doc, Item, Shape, TextNote, Wire } from '@/editor/model/types'
+import { getSymbol } from '@/symbols'
+import { pivotOf } from '@/symbols/geometry'
 
 /**
  * Direct-on-line motor starter, power circuit: supply -> breaker -> contactor -> overload -> motor.

@@ -95,16 +95,20 @@ One definition drives the React renderer, the standalone-SVG serialiser, termina
 
 ```
 src/
-  data/       symbol definitions, primitives (pole(), link(), …), categories
-  lib/        search, SVG serialiser + PNG export, print, hooks (hash router, theme, toast)
-  components/ library UI: cards, details drawer, glyph renderer, header
-  editor/     model & geometry, history reducer, wire routing, transform (rotate/flip), selection,
-              clipboard, align/distribute, labels and text notes, wire geometry / junctions / hand-routing, graphic shapes, drawing sheet + title block,
-              persistence, export, example circuit, Editor and Inspector UI
+  app/        shell: App (routes, lazy editor), Header, theme and toast hooks
+  library/    symbol library screen: cards, details drawer
+  editor/     schematic editor
+    model/      document types, geometry, wires, shapes, notes, drawing sheet + title block
+    actions/    pure operations: history reducer, rotate/flip, selection, clipboard, align, fit-to-sheet
+    io/         persistence (validation) and SVG/PNG export
+    ui/         Inspector, ShapeView, palette button, key helpers; Editor.tsx is the canvas
+  symbols/    symbol definitions as data, primitives (pole(), link(), ...), sizing, renderer, SVG serialiser, search
+  shared/     grid + geometry types, hash router, storage, downloads, print, icons
+  styles/     design tokens and CSS
 public/       favicons, web manifest, brand assets
 ```
 
-`npm test` runs 250 tests covering symbol data integrity, search ranking, terminal positions for every symbol at every size, rotation and reflection, exact group rotate/flip geometry, box selection, clipboard, align and distribute, text notes and part properties (geometry, history, storage, export), wire routing through waypoints, junction splitting, segment sliding, wire styles, graphic shapes (geometry, resize, rotate/flip, hit-testing, export), symbol scaling (including SVG arcs), orthogonal wire routing, magnetic alignment, the undo/redo reducer, storage validation, sheet and title-block geometry, fit-to-sheet planning, and SVG export.
+`npm test` runs 253 tests (including a guard that enforces the layering in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)) covering symbol data integrity, search ranking, terminal positions for every symbol at every size, rotation and reflection, exact group rotate/flip geometry, box selection, clipboard, align and distribute, text notes and part properties (geometry, history, storage, export), wire routing through waypoints, junction splitting, segment sliding, wire styles, graphic shapes (geometry, resize, rotate/flip, hit-testing, export), symbol scaling (including SVG arcs), orthogonal wire routing, magnetic alignment, the undo/redo reducer, storage validation, sheet and title-block geometry, fit-to-sheet planning, and SVG export.
 
 ## Run it
 

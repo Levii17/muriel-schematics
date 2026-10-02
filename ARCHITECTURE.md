@@ -13,12 +13,15 @@ src/
   library/              the symbol library screen: Library, SymbolCard, SymbolDrawer
   editor/               the schematic editor (lazy-loaded chunk)
     Editor.tsx            canvas, pointer handling and layout (the one big component)
-    ui/                   Inspector, ShapeView, PaletteButton, editor state types, key helpers
-    actions/              pure operations on a document: history reducer, transform (rotate/flip),
-                          align/distribute, selection, clipboard, fit-to-sheet checks
-    io/                   persist (validate + load), export (SVG/PNG serialisers)
+    ui/                   Inspector, ShapeView, PaletteButton, SheetTabs, ProjectPanel (sheets, nets,
+                          net label fields), CommitField, editor state types, key helpers
+    actions/              pure operations: history reducer (one sheet), project reducer (all sheets,
+                          one undo history), transform (rotate/flip), align/distribute, selection,
+                          clipboard, fit-to-sheet checks
+    io/                   persist (validate + load, project migration), export (SVG/PNG serialisers)
     model/                document types and geometry: types, geometry, notes, doc, routing, magnet,
-                          shapes, wires, sheet (paper + title block), labels
+                          shapes, wires, sheet (paper, zones, title block), labels, project (sheets),
+                          netlabel (names, what a label draws), nets (cross-references, issues)
     examples.ts           starter circuit
     __tests__/            cross-cutting integration tests
   symbols/              symbol definitions as data, plus how to draw them
@@ -63,6 +66,22 @@ for siblings. The alias is declared in `tsconfig.json` (`paths`) and `vite.confi
 - A new edit operation: a pure function in `editor/actions/`, a case in `history.ts`, then wire the UI.
 - A new export format: `editor/io/`.
 - A new screen: a feature folder beside `library/` and a route in `shared/router.ts` + `app/App.tsx`.
+
+## Sheets and net labels
+
+A drawing is a **project**: an ordered list of sheets, each a `Doc` with a stable id (`model/project.ts`).
+`actions/project.ts` wraps the single-document reducer: an edit is applied to the open sheet, and every
+undo step is a snapshot of the sheet list (sheets are immutable, so a snapshot only costs the sheet that
+changed). The open sheet is not part of the history; undo and redo switch to whichever sheet the change was
+on. The project is stored under `es.project.v2`; a drawing saved earlier under `es.doc.v1` is wrapped as a
+one-sheet project the first time it loads.
+
+A **net label** is an ordinary library symbol (`net-label`, one terminal) whose `Item.net` holds its name.
+Two labels are the same net when their names match, ignoring case and spacing, wherever they are in the
+project. `model/nets.ts` derives everything from that: cross-references drawn under each label, the Nets
+list, and the issues (a name used once, an unnamed label, a label with no wire, two names on one wire).
+Nothing derived is stored, so it can never go stale. `model/netlabel.ts` draws the name inside the flag
+and keeps it readable when the label is mirrored or upside down.
 
 ## Known follow-up
 

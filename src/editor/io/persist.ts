@@ -1,3 +1,6 @@
+import { cleanNetName, isNetLabel } from '@/editor/model/netlabel'
+import type { ProjectSheet } from '@/editor/model/project'
+import { MAX_SHEETS } from '@/editor/model/project'
 import { mergeSheet } from '@/editor/model/sheet'
 import type { Doc, Shape, TextNote, Wire, WireStyle } from '@/editor/model/types'
 import { getSymbol } from '@/symbols'
@@ -34,6 +37,10 @@ export function sanitizeDoc(raw: unknown): Doc | null {
     }
     const o = i.labelOffset as unknown as { x?: unknown; y?: unknown } | undefined
     if (o !== undefined && !(o && Number.isFinite(o.x) && Number.isFinite(o.y))) delete i.labelOffset
+    // Only net labels carry a name; keep it tidy and drop it from anything else.
+    const net = i.net as unknown
+    if (isNetLabel(i) && typeof net === 'string' && cleanNetName(net)) i.net = cleanNetName(net)
+    else delete i.net
   }
   return {
     items,
@@ -114,4 +121,43 @@ export function sanitizeShapes(raw: unknown): Shape[] {
     }
     return []
   })
+}
+
+/** What is kept in storage for a drawing with one or more sheets. */
+export interface StoredProject {
+  v: 2
+  active: string
+  sheets: ProjectSheet[]
+}
+
+export const STORED_PROJECT_VERSION = 2
+
+/** Validate a stored project. Bad sheets are dropped; null means nothing usable was left. */
+export function sanitizeProject(raw: unknown): { sheets: ProjectSheet[]; active: string } | null {
+  const r = raw as Partial<StoredProject> | null
+  if (!r || !Array.isArray(r.sheets)) return null
+  const seen = new Set<string>()
+  const sheets: ProjectSheet[] = []
+  for (const s of r.sheets.slice(0, MAX_SHEETS)) {
+    const doc = sanitizeDoc((s as { doc?: unknown } | null)?.doc)
+    const id = (s as { id?: unknown } | null)?.id
+    if (!doc || typeof id !== 'string' || !id || seen.has(id)) continue
+    seen.add(id)
+    sheets.push({ id, doc })
+  }
+  if (!sheets.length) return null
+  return { sheets, active: typeof r.active === 'string' && seen.has(r.active) ? r.active : sheets[0].id }
+}
+
+/**
+ * The drawing to open: the saved project if there is one, otherwise a drawing saved by an earlier version
+ * (a single document) becomes a one-sheet project. `newId` names that first sheet.
+ */
+export function restoreProject(project: unknown, legacyDoc: unknown, newId: () => string): { sheets: ProjectSheet[]; active: string } | null {
+  const saved = sanitizeProject(project)
+  if (saved) return saved
+  const doc = sanitizeDoc(legacyDoc)
+  if (!doc) return null
+  const id = newId()
+  return { sheets: [{ id, doc }], active: id }
 }

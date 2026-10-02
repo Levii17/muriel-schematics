@@ -1,5 +1,6 @@
 import { emptyDoc, scaleDrawing, uid } from '@/editor/model/doc'
 import { anchorOffset, defOf, itemMirror, itemScale, stepScale } from '@/editor/model/geometry'
+import { cleanNetName, isNetLabel } from '@/editor/model/netlabel'
 import { moveShape } from '@/editor/model/shapes'
 import type { PaperSize, TitleFields } from '@/editor/model/sheet'
 import type { Doc, Endpoint, Item, Shape, TextNote, WireStyle } from '@/editor/model/types'
@@ -42,6 +43,7 @@ export type Action =
   | { type: 'edit-note'; id: string; patch: Partial<Omit<TextNote, 'id'>> }
   | { type: 'props'; id: string; patch: Partial<Pick<Item, 'rating' | 'description' | 'partNo'>> }
   | { type: 'label-offset'; id: string; offset: Pt | null }
+  | { type: 'net-name'; id: string; name: string }
   | { type: 'resize'; ids: string[]; dir: 1 | -1 }
   | { type: 'set-scale'; ids: string[]; scale: number }
   | { type: 'scale-all'; factor: number }
@@ -94,7 +96,8 @@ function moveEach(doc: Doc, moves: Map<string, { dx: number; dy: number }>): Doc
 
 const sameEnd = (a: Endpoint, b: Endpoint) => a.item === b.item && a.term === b.term
 
-function apply(doc: Doc, action: Action): Doc {
+/** The document after one edit. The same object comes back when the edit changes nothing. */
+export function applyAction(doc: Doc, action: Action): Doc {
   switch (action.type) {
     case 'add':
       return { ...doc, items: [...doc.items, action.item] }
@@ -244,6 +247,19 @@ function apply(doc: Doc, action: Action): Doc {
       })
       return changed ? { ...doc, items } : doc
     }
+    case 'net-name': {
+      const name = cleanNetName(action.name)
+      let changed = false
+      const items = doc.items.map((i) => {
+        if (i.id !== action.id || !isNetLabel(i) || (i.net ?? '') === name) return i
+        changed = true
+        const next: Item = { ...i }
+        if (name) next.net = name
+        else delete next.net
+        return next
+      })
+      return changed ? { ...doc, items } : doc
+    }
     case 'delete':
       return {
         ...doc,
@@ -307,7 +323,7 @@ export function reducer(h: History, action: Action): History {
     const [next, ...rest] = h.future
     return { past: [...h.past, h.present], present: next, future: rest }
   }
-  const next = apply(h.present, action)
+  const next = applyAction(h.present, action)
   if (next === h.present) return h
   return { past: [...h.past, h.present].slice(-LIMIT), present: next, future: [] }
 }

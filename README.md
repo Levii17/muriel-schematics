@@ -41,6 +41,8 @@ Resizing in practice: a 125% breaker and a 50% variable resistor whose leads lan
 - **Junctions:** drop a wire onto the middle of another wire and it joins there. A junction dot is created on the spot, the wire you hit is split in two around it (keeping its shape and style), and the whole thing is one undo step. You can also place a Junction from the Connections category and hold `Alt` while dragging from it to start a wire.
 - **Hand-routing:** select a wire to see its handles. Drag a round handle to slide that stretch of wire sideways (a short stub is kept at a terminal so it can still jog), drag a square handle to move a bend, double-click a square handle to remove it, or use Reset route. Bends snap to a 10 px grid and line up with nearby terminals, and they travel with the wire when both of its parts move, turn, flip, scale or are pasted.
 - **Wire styles:** solid, dashed, dotted or dash-dot, in thin, normal or thick, for one wire or several at once. Styles are drawn in exports and kept by junction splits and copies.
+- **Multiple sheets:** tabs under the canvas add, switch between and (in the inspector) reorder or delete sheets. A new sheet copies the paper and title block of the open one, each sheet is named by its drawing title, and the title block's Sheet cell fills in "2 / 3" by itself. Print or save every sheet as one PDF with **All sheets**.
+- **Net labels:** the flag in Connections carries a name such as L1 or PE. Labels with the same name are connected, on one sheet or across sheets, and each shows where its partners are, for example `→ 2/C4` (sheet 2, zone C4). A new label takes the name of an unpaired one, so two clicks make a link. The inspector's **Nets** list renames a net everywhere and jumps to any label; a toolbar chip flags unnamed labels, labels with no wire, names used once, and two different names on one wire.
 - **Graphic shapes** (Line `L`, Rectangle `B`, Ellipse `O`): purely visual drawing — enclosure outlines, panel boundaries, mechanical linkage, callout arrows. Shapes never connect to anything and never route a wire. Drag to draw; Shift constrains a line to 0/45/90° or makes a box or ellipse a square/circle. Lines take an arrowhead at one or both ends; boxes and ellipses take a tinted fill and (boxes) a corner radius. Select a shape to drag its handles, and drag its outline to move it — an unfilled shape only picks up clicks on its outline, so parts drawn inside an enclosure stay clickable through it.
 - **Selecting:** drag an empty area for a selection box (left to right selects parts fully inside, right to left selects anything the box touches, like CAD). Shift adds or removes, `Ctrl+A` selects everything. Wires can be selected too, alone or together with parts.
 - **Tools:** a rail on the left has Select (`V`), Text (`T`) and Pan (`H`). You can also pan by holding `Space` while dragging, or with the middle mouse button.
@@ -54,7 +56,7 @@ Resizing in practice: a 125% breaker and a 50% variable resistor whose leads lan
 - **Resize parts** (`[` and `]`, or the Size control in the inspector): 50%, 75%, 100%, 125%, 150%, 200%, 250%, 300%. A part grows or shrinks about its first terminal, so its wire stays attached; line weight stays constant. Use it when symbols are out of proportion, for example a resistor bridging two breaker poles.
 - **Magnetic alignment:** when you drag or place a part, its terminals snap onto the terminals of other parts within half a grid cell (a dashed guide shows the match). That is how differently sized parts line up exactly, for example a 50% resistor between the poles of a 125% breaker.
 - **Whole-drawing scale:** 50% to 200% scales every part and the spacing between them together, keeping wires aligned.
-- Pan and zoom, fit to content, autosave to `localStorage`.
+- Pan and zoom, fit to content, autosave to `localStorage` (drawings saved by earlier versions open as a single sheet).
 - **Drawing sheet** (toggle in the toolbar): A4, A3, A2 or A1 landscape paper with a border, zone references (columns 1–8, rows A–F) and a title block.
 - **Title block:** organisation, project, drawing title, details, drawn by, drawing number, date, scale, revision and sheet. Edit the fields in the inspector; the block updates live. Long values are shortened with an ellipsis instead of overflowing their cell.
 - **Export:** SVG (sheet sized in millimetres, so it opens at true paper size), PNG, or print / save as PDF from the browser. - **Keeping it on the sheet:** parts outside the frame or under the title block get a red outline and a "n off sheet" chip in the toolbar. "Move onto the sheet" centres the drawing in the free space, switching to the smallest larger paper if needed; if it is too big even for A1, "Shrink to 75% and fit" scales it down and places it.
@@ -98,8 +100,8 @@ src/
   app/        shell: App (routes, lazy editor), Header, theme and toast hooks
   library/    symbol library screen: cards, details drawer
   editor/     schematic editor
-    model/      document types, geometry, wires, shapes, notes, drawing sheet + title block
-    actions/    pure operations: history reducer, rotate/flip, selection, clipboard, align, fit-to-sheet
+    model/      document types, geometry, wires, shapes, notes, net labels and nets, sheets, drawing sheet + title block
+    actions/    pure operations: history reducer, project (multi-sheet) reducer, rotate/flip, selection, clipboard, align, fit-to-sheet
     io/         persistence (validation) and SVG/PNG export
     ui/         Inspector, ShapeView, palette button, key helpers; Editor.tsx is the canvas
   symbols/    symbol definitions as data, primitives (pole(), link(), ...), sizing, renderer, SVG serialiser, search
@@ -108,7 +110,7 @@ src/
 public/       favicons, web manifest, brand assets
 ```
 
-`npm test` runs 253 tests (including a guard that enforces the layering in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)) covering symbol data integrity, search ranking, terminal positions for every symbol at every size, rotation and reflection, exact group rotate/flip geometry, box selection, clipboard, align and distribute, text notes and part properties (geometry, history, storage, export), wire routing through waypoints, junction splitting, segment sliding, wire styles, graphic shapes (geometry, resize, rotate/flip, hit-testing, export), symbol scaling (including SVG arcs), orthogonal wire routing, magnetic alignment, the undo/redo reducer, storage validation, sheet and title-block geometry, fit-to-sheet planning, and SVG export.
+`npm test` runs 328 tests (including a guard that enforces the layering in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)) covering symbol data integrity, search ranking, terminal positions for every symbol at every size, rotation and reflection, exact group rotate/flip geometry, box selection, clipboard, align and distribute, text notes and part properties (geometry, history, storage, export), wire routing through waypoints, junction splitting, segment sliding, wire styles, graphic shapes (geometry, resize, rotate/flip, hit-testing, export), symbol scaling (including SVG arcs), orthogonal wire routing, magnetic alignment, the undo/redo reducer, storage validation, sheet and title-block geometry, fit-to-sheet planning, and SVG export.
 
 ## Run it
 
@@ -137,7 +139,7 @@ Symbols follow IEC 60617-style conventions (cross on breaker poles, bar on isola
 
 ## Ideas for next steps
 
-Text annotations, a bill of materials from the placed parts, multi-sheet drawings (the `Sheet` field is already there), DIN-rail / panel layout, a netlist export, and a backend (save and share drawings by link) to make it a full-stack piece.
+Text annotations, a bill of materials from the placed parts, DIN-rail / panel layout, a netlist export, and a backend (save and share drawings by link) to make it a full-stack piece.
 
 ## Licence
 

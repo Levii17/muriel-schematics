@@ -24,6 +24,8 @@ export interface Item {
   partNo?: string
   /** How far the label block has been dragged from its default spot, in canvas px. */
   labelOffset?: { x: number; y: number }
+  /** Net labels only: the name that links this label to every other label with the same name. */
+  net?: string
 }
 
 /** Free text on the drawing: notes, titles, annotations. Several lines are separated by "\n". */

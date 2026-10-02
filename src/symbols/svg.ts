@@ -35,7 +35,7 @@ export function primToSvg(p: Prim): string {
     case 'poly':
       return `<polyline points="${p.pts.map(([x, y]) => `${num(x)},${num(y)}`).join(' ')}"${st}/>`
     case 'text':
-      return `<text x="${num(p.x)}" y="${num(p.y)}" font-size="${p.size}" font-weight="${p.weight}" text-anchor="${p.anchor}" fill="${p.style?.fill ?? 'currentColor'}" stroke="none"${st}>${escapeXml(p.text)}</text>`
+      return `<text x="${num(p.x)}" y="${num(p.y)}" font-size="${p.size}" font-weight="${p.weight}" text-anchor="${p.anchor}" fill="${p.style?.fill ?? 'currentColor'}" stroke="none"${p.rot ? ` transform="rotate(${p.rot} ${num(p.x)} ${num(p.y - p.size * 0.35)})"` : ''}${st}>${escapeXml(p.text)}</text>`
   }
 }
 

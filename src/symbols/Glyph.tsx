@@ -16,6 +16,11 @@ function styleProps(st: PrimStyle | undefined, isText = false) {
   return out
 }
 
+/** SVG transform that turns a text primitive about the middle of its line, or undefined when it is not turned. */
+export function textTurn(p: { x: number; y: number; size: number; rot?: number }): string | undefined {
+  return p.rot ? `rotate(${p.rot} ${p.x} ${p.y - p.size * 0.35})` : undefined
+}
+
 export function Prims({ prims }: { prims: Prim[] }) {
   return (
     <>
@@ -33,7 +38,7 @@ export function Prims({ prims }: { prims: Prim[] }) {
             return <polyline key={i} points={p.pts.map(([x, y]) => `${x},${y}`).join(' ')} {...styleProps(p.style)} />
           case 'text':
             return (
-              <text key={i} x={p.x} y={p.y} fontSize={p.size} fontWeight={p.weight} textAnchor={p.anchor} fill={p.style?.fill ?? 'currentColor'} stroke="none" {...styleProps(p.style, true)}>
+              <text key={i} x={p.x} y={p.y} fontSize={p.size} fontWeight={p.weight} textAnchor={p.anchor} fill={p.style?.fill ?? 'currentColor'} stroke="none" transform={textTurn(p)} {...styleProps(p.style, true)}>
                 {p.text}
               </text>
             )
@@ -44,10 +49,10 @@ export function Prims({ prims }: { prims: Prim[] }) {
 }
 
 /** The symbol body with the shared stroke style. Colour comes from CSS `color`. */
-export function GlyphBody({ def, scale = 1, mirror = false }: { def: SymbolDef; scale?: number; mirror?: boolean }) {
+export function GlyphBody({ def, scale = 1, mirror = false, prims }: { def: SymbolDef; scale?: number; mirror?: boolean; prims?: Prim[] }) {
   return (
     <g className="glyph-body" fill="none" stroke="currentColor" strokeWidth={STROKE} strokeLinecap="round" strokeLinejoin="round">
-      <Prims prims={symbolBody(def, scale, mirror)} />
+      <Prims prims={prims ?? symbolBody(def, scale, mirror)} />
     </g>
   )
 }

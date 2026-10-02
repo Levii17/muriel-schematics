@@ -10,5 +10,5 @@ export const CATEGORIES: Category[] = [
   { id: 'power', name: 'Supply, transformers & earthing', blurb: 'Sources, transformers and earth connections.' },
   { id: 'measure', name: 'Measurement & indication', blurb: 'Meters and signal lamps.' },
   { id: 'passive', name: 'Passive components', blurb: 'Resistors and capacitors.' },
-  { id: 'connect', name: 'Connections', blurb: 'Junction points where wires meet.' },
+  { id: 'connect', name: 'Connections', blurb: 'Junctions, and net labels that link wires on one sheet or across sheets.' },
 ]

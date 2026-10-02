@@ -1,7 +1,10 @@
 import type { Pt } from '@/shared/geometry'
 
 /** Constants and small state shapes used by the editor's pointer handling. */
+/** The drawing as saved by earlier versions: a single document. Still read once, to carry it over. */
 export const STORAGE_KEY = 'es.doc.v1'
+/** The drawing with all its sheets. */
+export const PROJECT_KEY = 'es.project.v2'
 export const MIN_ZOOM = 0.3
 export const MAX_ZOOM = 3
 export const SNAP_RADIUS = 18

@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import type { Prim } from '@/symbols/types'
 
 import type { PaperSize, SheetConfig } from './sheet'
-import { BLOCK_H, BLOCK_W, FIELD_DEFS, MARGIN, PAPER, blockBox, defaultSheet, fit, frameBox, mergeSheet, sheetPrims } from './sheet'
+import { BLOCK_H, BLOCK_W, FIELD_DEFS, MARGIN, PAPER, blockBox, defaultSheet, fit, frameBox, mergeSheet, sheetFieldValue, sheetPrims, zoneOf } from './sheet'
 
 const sizes: PaperSize[] = ['A4', 'A3', 'A2', 'A1']
 const sample = (size: PaperSize): SheetConfig => ({
@@ -104,5 +104,35 @@ describe('mergeSheet', () => {
     expect(s.fields.project).toBe('P')
     expect(s.fields.scale).toBe('NTS')
     expect(s.fields.revision).toHaveLength(4)
+  })
+})
+describe('zoneOf', () => {
+  it('names zones like the margin does: row letter, then column number', () => {
+    const f = frameBox('A3')
+    expect(zoneOf('A3', f.x + 1, f.y + 1)).toBe('A1')
+    expect(zoneOf('A3', f.x + f.w - 1, f.y + f.h - 1)).toBe('F8')
+  })
+
+  it('clamps points outside the frame to the edge zones', () => {
+    expect(zoneOf('A4', -500, -500)).toBe('A1')
+    expect(zoneOf('A4', 99999, 99999)).toBe('D6')
+  })
+
+  it('uses each paper size\'s own grid', () => {
+    const f = frameBox('A1')
+    expect(zoneOf('A1', f.x + f.w - 1, f.y + f.h - 1)).toBe('L16')
+  })
+})
+
+describe('sheetFieldValue', () => {
+  it('numbers a multi-sheet drawing when the field is blank or untouched', () => {
+    expect(sheetFieldValue('1 / 1', { index: 2, total: 5 })).toBe('2 / 5')
+    expect(sheetFieldValue('', { index: 1, total: 2 })).toBe('1 / 2')
+  })
+
+  it('keeps what the user typed, and leaves a single sheet alone', () => {
+    expect(sheetFieldValue('A', { index: 2, total: 5 })).toBe('A')
+    expect(sheetFieldValue('1 / 1', { index: 1, total: 1 })).toBe('1 / 1')
+    expect(sheetFieldValue('1 / 1')).toBe('1 / 1')
   })
 })

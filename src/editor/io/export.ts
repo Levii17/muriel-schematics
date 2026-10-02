@@ -1,23 +1,25 @@
-import { defOf, itemBounds, itemMirror, itemScale } from '@/editor/model/geometry'
+import { defOf, itemBounds, itemScale } from '@/editor/model/geometry'
 import { LABEL_LINE_H, LABEL_STYLE, labelBox, labelLines, labelPos } from '@/editor/model/labels'
+import { itemPrims } from '@/editor/model/netlabel'
 import { NOTE_LINE, noteBounds, noteLines, noteRot } from '@/editor/model/notes'
 import { pointsToPath } from '@/editor/model/routing'
 import { arrowsOf, shapeBounds } from '@/editor/model/shapes'
+import type { SheetPosition } from '@/editor/model/sheet'
 import { PAPER, sheetPrims } from '@/editor/model/sheet'
 import type { Doc, Shape, TextNote } from '@/editor/model/types'
 import { junctions, wireGeometries, wireStroke } from '@/editor/model/wires'
 import { getSymbol } from '@/symbols'
-import { pivotOf, symbolBody } from '@/symbols/geometry'
+import { pivotOf } from '@/symbols/geometry'
 import { bodyToSvg, escapeXml, styledGroup } from '@/symbols/svg'
 
 
 /** SVG for one part's label block: reference, then rating, then description. */
-function labelSvg(item: Doc['items'][number], ink: string): string {
+function labelSvg(item: Doc['items'][number], ink: string, xref?: string): string {
   const p = labelPos(item)
-  return labelLines(item)
+  return labelLines(item, xref)
     .map((l, i) => {
       const style = LABEL_STYLE[l.kind]
-      const weight = l.kind === 'ref' ? 600 : l.kind === 'rating' ? 500 : 400
+      const weight = l.kind === 'ref' ? 600 : l.kind === 'rating' || l.kind === 'xref' ? 500 : 400
       const opacity = l.kind === 'desc' ? ' opacity="0.7"' : ''
       return `<text x="${p.x}" y="${p.y + i * LABEL_LINE_H}" font-size="${style.size}" font-weight="${weight}" fill="${ink}" stroke="none"${opacity}>${escapeXml(l.text)}</text>`
     })
@@ -55,8 +57,17 @@ export function noteSvg(n: TextNote, ink: string): string {
   )
 }
 
-export function diagramToSvg(doc: Doc, opts: { ink?: string; background?: string | null } = {}) {
-  const { ink = '#111111', background = null } = opts
+export interface DiagramOptions {
+  ink?: string
+  background?: string | null
+  /** Cross-reference text for net labels, by item id (see `xrefLabels`). */
+  xrefs?: ReadonlyMap<string, string>
+  /** Where this sheet sits in a multi-sheet drawing, so the title block can say "2 / 3". */
+  position?: SheetPosition
+}
+
+export function diagramToSvg(doc: Doc, opts: DiagramOptions = {}) {
+  const { ink = '#111111', background = null, xrefs, position } = opts
   const sheetOn = doc.sheet.enabled
 
   let x: number, y: number, w: number, h: number
@@ -77,7 +88,7 @@ export function diagramToSvg(doc: Doc, opts: { ink?: string; background?: string
     }
     for (const item of doc.items) {
       grow(itemBounds(item, defOf(item)))
-      const lb = labelBox(item)
+      const lb = labelBox(item, xrefs?.get(item.id))
       if (lb) grow(lb)
     }
     for (const n of doc.notes) grow(noteBounds(n))
@@ -109,14 +120,14 @@ export function diagramToSvg(doc: Doc, opts: { ink?: string; background?: string
       if (!def) return ''
       const pv = pivotOf(def)
       const k = itemScale(item)
-      return `<g transform="translate(${item.x} ${item.y}) rotate(${item.rot}) translate(${-pv.x * k} ${-pv.y * k})">${bodyToSvg(symbolBody(def, k, itemMirror(item)))}</g>`
+      return `<g transform="translate(${item.x} ${item.y}) rotate(${item.rot}) translate(${-pv.x * k} ${-pv.y * k})">${bodyToSvg(itemPrims(item, def))}</g>`
     })
     .join('')
-  const labels = doc.items.map((i) => labelSvg(i, ink)).join('')
+  const labels = doc.items.map((i) => labelSvg(i, ink, xrefs?.get(i.id))).join('')
   const notes = doc.notes.map((n) => noteSvg(n, ink)).join('')
   const shapes = doc.shapes.map((sh) => shapeSvg(sh, ink)).join('')
   const paper = sheetOn ? `<rect x="0" y="0" width="${w}" height="${h}" fill="#ffffff" stroke="none"/>` : ''
-  const sheet = sheetOn ? bodyToSvg(sheetPrims(doc.sheet)) : ''
+  const sheet = sheetOn ? bodyToSvg(sheetPrims(doc.sheet, position)) : ''
   const bg = !sheetOn && background ? `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${background}"/>` : ''
   // A sheet is sized in millimetres (4 px per mm) so it opens at true paper size in other tools.
   const size = sheetOn ? `width="${w / 4}mm" height="${h / 4}mm"` : `width="${w}" height="${h}"`

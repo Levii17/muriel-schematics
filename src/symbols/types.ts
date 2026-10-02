@@ -29,6 +29,8 @@ export type Prim = (
       size: number
       weight: 400 | 600 | 700
       anchor: 'start' | 'middle' | 'end'
+      /** Turn the text about its own centre, in degrees. Used to keep a name upright inside a flipped part. */
+      rot?: number
     }
 ) & { style?: PrimStyle }
 

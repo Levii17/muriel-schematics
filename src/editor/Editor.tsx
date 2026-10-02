@@ -5,7 +5,8 @@ import type { AlignMode, Axis } from '@/editor/actions/align'
 import { conflictingItemIds, conflictingNoteIds, conflictingShapeIds, planFit, planShrink } from '@/editor/actions/checks'
 import type { Payload } from '@/editor/actions/clipboard'
 import { clonePayload, copyPayload } from '@/editor/actions/clipboard'
-import { initHistory, reducer } from '@/editor/actions/history'
+import type { ProjectHistory } from '@/editor/actions/project'
+import { initProject, projectReducer } from '@/editor/actions/project'
 import type { Selection } from '@/editor/actions/select'
 import {
   EMPTY,
@@ -23,12 +24,16 @@ import {
 } from '@/editor/actions/select'
 import { nextOrientation } from '@/editor/actions/transform'
 import { diagramToSvg } from '@/editor/io/export'
-import { sanitizeDoc } from '@/editor/io/persist'
+import { restoreProject, STORED_PROJECT_VERSION } from '@/editor/io/persist'
 import { nextLabel, scaleDrawing, uid } from '@/editor/model/doc'
-import { defOf, itemBounds, itemMirror, itemScale, snapPlacement, terminalWorld } from '@/editor/model/geometry'
+import { defOf, itemBounds, itemScale, snapPlacement, terminalWorld } from '@/editor/model/geometry'
 import { LABEL_LINE_H, labelBox, labelLines, labelPos } from '@/editor/model/labels'
 import { alignDelta, terminalPoints } from '@/editor/model/magnet'
+import { itemPrims, NET_LABEL_SYMBOL } from '@/editor/model/netlabel'
+import type { NetLabelRef } from '@/editor/model/nets'
+import { flaggedLabels, netGroups, netIssues, suggestNetName, xrefLabels } from '@/editor/model/nets'
 import { NOTE_LINE, noteBounds, noteLines, noteLocalBox, noteRot } from '@/editor/model/notes'
+import { sheetName } from '@/editor/model/project'
 import { pointsToPath, routeWire } from '@/editor/model/routing'
 import type { HandleId } from '@/editor/model/shapes'
 import { handlesOf, isUsable, moveShape, resizeShape, shapeBounds, shapeFromDrag } from '@/editor/model/shapes'
@@ -38,10 +43,12 @@ import { junctions, wireGeometries } from '@/editor/model/wires'
 import { JUNCTION_SYMBOL, JUNCTION_TERMINAL, nearestWirePoint, shiftSegment, shiftWires, tapPoint, wireStroke } from '@/editor/model/wires'
 import { Inspector } from '@/editor/ui/Inspector'
 import { PaletteButton } from '@/editor/ui/PaletteButton'
+import type { SheetSummary } from '@/editor/ui/ProjectPanel'
 import { ShapeView, hitWidth } from '@/editor/ui/ShapeView'
+import { SheetTabs } from '@/editor/ui/SheetTabs'
 import { isTextTarget, usesSpace } from '@/editor/ui/keys'
 import type { Marquee, Tool, View, WireEdit } from '@/editor/ui/state'
-import { DRAG_THRESHOLD, LABEL_SNAP, MAX_ZOOM, MIN_ZOOM, SHAPE_TOOLS, SNAP_RADIUS, STORAGE_KEY } from '@/editor/ui/state'
+import { DRAG_THRESHOLD, LABEL_SNAP, MAX_ZOOM, MIN_ZOOM, PROJECT_KEY, SHAPE_TOOLS, SNAP_RADIUS, STORAGE_KEY } from '@/editor/ui/state'
 import {
   CursorIcon,
   DuplicateIcon,
@@ -65,7 +72,7 @@ import {
 import { downloadBlob, downloadText, svgToPngBlob } from '@/shared/download'
 import type { Pt } from '@/shared/geometry'
 import { snap } from '@/shared/geometry'
-import { printSheet } from '@/shared/print'
+import { printPages, printSheet } from '@/shared/print'
 import { loadJson, saveJson } from '@/shared/storage'
 import { CATEGORIES, SYMBOLS, getSymbol } from '@/symbols'
 import { GlyphBody, Prims } from '@/symbols/Glyph'
@@ -81,9 +88,17 @@ interface Props {
   onToast: (msg: string) => void
 }
 
+/** The saved drawing, a drawing saved by an earlier version (one sheet), or the starter example. */
+function initialProject(): ProjectHistory {
+  const restored = restoreProject(loadJson<unknown>(PROJECT_KEY), loadJson<unknown>(STORAGE_KEY), () => uid('s'))
+  return restored ? initProject(restored.sheets, restored.active) : initProject([{ id: uid('s'), doc: dolStarterExample() }])
+}
+
 export default function Editor({ armId, loadExample, onToast }: Props) {
-  const [hist, dispatch] = useReducer(reducer, undefined, () => initHistory(sanitizeDoc(loadJson<unknown>(STORAGE_KEY)) ?? dolStarterExample()))
-  const doc = hist.present
+  const [proj, dispatch] = useReducer(projectReducer, undefined, initialProject)
+  const sheets = proj.present
+  const activeIndex = Math.max(0, sheets.findIndex((s) => s.id === proj.active))
+  const doc = sheets[activeIndex].doc
 
   const [view, setView] = useState<View>({ x: 40, y: 40, k: 1 })
   const [tool, setTool] = useState<Tool>('select')
@@ -112,7 +127,7 @@ export default function Editor({ armId, loadExample, onToast }: Props) {
   const viewRef = useRef(view)
   viewRef.current = view
 
-  useEffect(() => saveJson(STORAGE_KEY, doc), [doc])
+  useEffect(() => saveJson(PROJECT_KEY, { v: STORED_PROJECT_VERSION, active: proj.active, sheets: proj.present }), [proj.present, proj.active])
 
   // Undo, redo and deletes can leave ids behind; only ever act on ones that still exist.
   const selection: Selection = useMemo(() => {
@@ -156,7 +171,18 @@ export default function Editor({ armId, loadExample, onToast }: Props) {
   }, [doc, drag, labelDrag, wireEdit, shapeEdit])
 
   const wireStyles = useMemo(() => new Map(doc.wires.map((w) => [w.id, w.style])), [doc.wires])
-  const sheetArt = useMemo(() => (doc.sheet.enabled ? sheetPrims(doc.sheet) : null), [doc.sheet])
+  const position = useMemo(() => ({ index: activeIndex + 1, total: sheets.length }), [activeIndex, sheets.length])
+  const sheetArt = useMemo(() => (doc.sheet.enabled ? sheetPrims(doc.sheet, position) : null), [doc.sheet, position])
+
+  // Net labels: who is linked to whom across every sheet, and what looks wrong.
+  const xrefs = useMemo(() => xrefLabels(sheets, proj.active), [sheets, proj.active])
+  const nets = useMemo(() => netGroups(sheets), [sheets])
+  const issues = useMemo(() => netIssues(sheets), [sheets])
+  const flagged = useMemo(() => flaggedLabels(issues, proj.active), [issues, proj.active])
+  const sheetSummaries: SheetSummary[] = useMemo(
+    () => sheets.map((s, i) => ({ id: s.id, name: sheetName(s, i), content: s.doc.items.length + s.doc.notes.length + s.doc.shapes.length, active: s.id === proj.active })),
+    [sheets, proj.active],
+  )
   const wires = useMemo(() => wireGeometries(shown), [shown])
   const dots = useMemo(() => junctions(shown), [shown])
   const selectedItems = doc.items.filter((i) => selection.items.includes(i.id))
@@ -249,6 +275,88 @@ export default function Editor({ armId, loadExample, onToast }: Props) {
     el.addEventListener('wheel', onWheel, { passive: false })
     return () => el.removeEventListener('wheel', onWheel)
   }, [zoomAt])
+
+  /* ---------- sheets and net labels ---------- */
+
+  // Each sheet remembers where you were looking. A jump to a label on another sheet waits here for the switch.
+  const viewsRef = useRef(new Map<string, View>())
+  const shownSheet = useRef(proj.active)
+  const pendingJump = useRef<string | null>(null)
+
+  const centerOn = useCallback((pt: Pt, k?: number) => {
+    const r = svgRef.current?.getBoundingClientRect()
+    if (!r) return
+    setView((v) => {
+      const kk = Math.min(1.5, Math.max(0.6, k ?? v.k))
+      return { k: kk, x: r.width / 2 - pt.x * kk, y: r.height / 2 - pt.y * kk }
+    })
+  }, [])
+
+  // Runs for every way the open sheet can change: a tab, a jump, or undo landing on another sheet.
+  useEffect(() => {
+    if (shownSheet.current === proj.active) return
+    viewsRef.current.set(shownSheet.current, viewRef.current)
+    shownSheet.current = proj.active
+    const target = pendingJump.current ? doc.items.find((i) => i.id === pendingJump.current) : undefined
+    pendingJump.current = null
+    const saved = viewsRef.current.get(proj.active)
+    setWiring(null)
+    setDrag(null)
+    setLabelDrag(null)
+    setMarquee(null)
+    setWireEdit(null)
+    setShapeEdit(null)
+    setDrawing(null)
+    if (target) {
+      setSelection(sel({ items: [target.id], wires: [], notes: [] }))
+      if (saved) setView(saved)
+      centerOn({ x: target.x, y: target.y }, saved?.k ?? 1)
+      return
+    }
+    setSelection(EMPTY)
+    if (saved) setView(saved)
+    else requestAnimationFrame(() => fit(doc))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [proj.active])
+
+  const openSheet = useCallback((id: string) => dispatch({ type: 'project-open-sheet', id }), [])
+  const addSheet = useCallback(() => dispatch({ type: 'project-add-sheet', id: uid('s') }), [])
+  const moveSheet = useCallback((id: string, dir: -1 | 1) => dispatch({ type: 'project-move-sheet', id, dir }), [])
+  const deleteSheet = useCallback(
+    (id: string) => {
+      const s = sheetSummaries.find((x) => x.id === id)
+      if (!s) return
+      if (s.content > 0 && !window.confirm(`Delete "${s.name}" and everything on it? Undo brings it back.`)) return
+      dispatch({ type: 'project-delete-sheet', id })
+    },
+    [sheetSummaries],
+  )
+
+  /** Select a net label and bring it into view, switching sheets first when it is on another one. */
+  const jumpTo = useCallback(
+    (ref: NetLabelRef) => {
+      if (ref.sheetId !== proj.active) {
+        pendingJump.current = ref.itemId
+        dispatch({ type: 'project-open-sheet', id: ref.sheetId })
+        return
+      }
+      const it = doc.items.find((i) => i.id === ref.itemId)
+      if (!it) return
+      setSelection(sel({ items: [it.id], wires: [], notes: [] }))
+      const r = svgRef.current?.getBoundingClientRect()
+      const v = viewRef.current
+      const sx = v.x + it.x * v.k
+      const sy = v.y + it.y * v.k
+      if (!r || sx < 40 || sy < 40 || sx > r.width - 40 || sy > r.height - 40) centerOn({ x: it.x, y: it.y })
+    },
+    [proj.active, doc.items, centerOn],
+  )
+  const [issueCursor, setIssueCursor] = useState(0)
+  const nextIssue = () => {
+    if (!issues.length) return
+    jumpTo(issues[issueCursor % issues.length].labels[0])
+    setIssueCursor((c) => c + 1)
+  }
 
   /* ---------- actions ---------- */
 
@@ -566,6 +674,7 @@ export default function Editor({ armId, loadExample, onToast }: Props) {
       const at = placementAt(def, w).at
       const item: Item = { id: uid('i'), symbolId: def.id, x: at.x, y: at.y, rot: armedOrient.rot, label: nextLabel(doc.items, def) }
       if (armedOrient.mirror) item.mirror = true
+      if (def.id === NET_LABEL_SYMBOL) item.net = suggestNetName(sheets)
       dispatch({ type: 'add', item })
       setSelection(sel({ items: [item.id], wires: [], notes: [] }))
       return
@@ -782,17 +891,20 @@ export default function Editor({ armId, loadExample, onToast }: Props) {
 
   /* ---------- export ---------- */
 
+  // Several sheets get numbered file names so exporting each one does not overwrite the last.
+  const fileBase = sheets.length > 1 ? `muriel-schematic-sheet${activeIndex + 1}` : 'muriel-schematic'
+  const exportOpts = { xrefs, position }
   const exportSvg = () => {
     if (!doc.items.length && !doc.notes.length && !doc.shapes.length) return onToast('Nothing to export yet')
-    downloadText('muriel-schematic.svg', diagramToSvg(doc).svg)
+    downloadText(`${fileBase}.svg`, diagramToSvg(doc, exportOpts).svg)
   }
   const exportPng = async () => {
     if (!doc.items.length && !doc.notes.length && !doc.shapes.length) return onToast('Nothing to export yet')
     try {
-      const { svg, width, height } = diagramToSvg(doc, { background: '#ffffff' })
+      const { svg, width, height } = diagramToSvg(doc, { background: '#ffffff', ...exportOpts })
       // Cap the bitmap so an A1 sheet does not ask the browser for a 30-megapixel canvas.
       const scale = Math.min(2, 6000 / Math.max(width, height))
-      downloadBlob('muriel-schematic.png', await svgToPngBlob(svg, width, height, scale))
+      downloadBlob(`${fileBase}.png`, await svgToPngBlob(svg, width, height, scale))
     } catch {
       onToast('PNG export failed in this browser')
     }
@@ -800,8 +912,17 @@ export default function Editor({ armId, loadExample, onToast }: Props) {
 
   const print = () => {
     if (!doc.items.length && !doc.notes.length && !doc.shapes.length && !doc.sheet.enabled) return onToast('Nothing to print yet')
-    const { svg } = diagramToSvg(doc, { background: '#ffffff' })
+    const { svg } = diagramToSvg(doc, { background: '#ffffff', ...exportOpts })
     if (!printSheet(svg, doc.sheet.size)) onToast('Allow pop-ups to print, or export the SVG instead')
+  }
+
+  /** Every sheet, in order, one per page at its own paper size. */
+  const printAll = () => {
+    const pages = sheets.map((s, i) => ({
+      svg: diagramToSvg(s.doc, { background: '#ffffff', xrefs: xrefLabels(sheets, s.id), position: { index: i + 1, total: sheets.length } }).svg,
+      size: s.doc.sheet.size,
+    }))
+    if (!printPages(pages)) onToast('Allow pop-ups to print, or export each sheet as SVG instead')
   }
 
   /* ---------- render ---------- */
@@ -861,8 +982,8 @@ export default function Editor({ armId, loadExample, onToast }: Props) {
 
       <section className="stage">
         <div className="editor-toolbar" role="toolbar" aria-label="Editor actions">
-          <button className="icon-btn" onClick={() => dispatch({ type: 'undo' })} disabled={!hist.past.length} aria-label="Undo" title="Undo (Ctrl+Z)"><UndoIcon /></button>
-          <button className="icon-btn" onClick={() => dispatch({ type: 'redo' })} disabled={!hist.future.length} aria-label="Redo" title="Redo (Ctrl+Shift+Z)"><RedoIcon /></button>
+          <button className="icon-btn" onClick={() => dispatch({ type: 'undo' })} disabled={!proj.past.length} aria-label="Undo" title="Undo (Ctrl+Z)"><UndoIcon /></button>
+          <button className="icon-btn" onClick={() => dispatch({ type: 'redo' })} disabled={!proj.future.length} aria-label="Redo" title="Redo (Ctrl+Shift+Z)"><RedoIcon /></button>
           <span className="sep" />
           <button className="icon-btn" onClick={rotateSelected} disabled={!hasBody && !armed} aria-label="Rotate" title="Rotate (R)"><RotateIcon /></button>
           <button className="icon-btn" onClick={() => flipSelected('h')} disabled={!hasBody && !armed} aria-label="Flip left-right" title="Flip left-right (F)"><FlipHIcon /></button>
@@ -884,10 +1005,16 @@ export default function Editor({ armId, loadExample, onToast }: Props) {
               <WarnIcon /> {allConflicts} off sheet
             </button>
           )}
+          {issues.length > 0 && (
+            <button className="chip-btn warn-chip" onClick={nextIssue} title="Jump to the next net label that needs attention">
+              <WarnIcon /> {issues.length} net {issues.length === 1 ? 'issue' : 'issues'}
+            </button>
+          )}
           <span className="grow" />
           <button className="btn small" onClick={() => { const ex = dolStarterExample(); dispatch({ type: 'load', doc: ex }); setSelection(EMPTY); requestAnimationFrame(() => fit(ex)) }} aria-label="Load example circuit" title="Load the motor starter example">Example</button>
           <button className="btn small" onClick={() => { dispatch({ type: 'load', doc: { items: [], wires: [], notes: [], shapes: [], sheet: doc.sheet } }); setSelection(EMPTY) }} disabled={!doc.items.length && !doc.notes.length && !doc.shapes.length}>Clear</button>
           <button className="icon-btn" onClick={print} aria-label="Print or save as PDF" title="Print / save as PDF"><PrintIcon /></button>
+          {sheets.length > 1 && <button className="btn small" onClick={printAll} title="Print or save every sheet as one PDF">All sheets</button>}
           <button className="btn small" onClick={exportSvg} aria-label="Export SVG" title="Export as SVG">SVG</button>
           <button className="btn small primary" onClick={exportPng} aria-label="Export PNG" title="Export as PNG">PNG</button>
         </div>
@@ -1023,6 +1150,13 @@ export default function Editor({ armId, loadExample, onToast }: Props) {
                     return <rect key={it.id} className="conflict-box" x={b.x - 6} y={b.y - 6} width={b.w + 12} height={b.h + 12} rx="6" />
                   })}
 
+                {shown.items
+                  .filter((it) => flagged.has(it.id))
+                  .map((it) => {
+                    const b = itemBounds(it, defOf(it))
+                    return <rect key={`nw-${it.id}`} className="net-warn-box" x={b.x - 6} y={b.y - 6} width={b.w + 12} height={b.h + 12} rx="6" />
+                  })}
+
                 {shown.notes
                   .filter((n) => conflictNoteIds.includes(n.id))
                   .map((n) => {
@@ -1039,13 +1173,14 @@ export default function Editor({ armId, loadExample, onToast }: Props) {
                 })}
 
                 {shown.items.map((it) => {
-                  const lb = labelBox(it)
+                  const xref = xrefs.get(it.id)
+                  const lb = labelBox(it, xref)
                   if (!lb) return null
                   const p = labelPos(it)
                   return (
                     <g key={`lbl-${it.id}`} className="label-block">
                       <rect className="label-hit" data-kind="label" data-id={it.id} x={lb.x} y={lb.y} width={lb.w} height={lb.h} rx="3" />
-                      {labelLines(it).map((l, i) => (
+                      {labelLines(it, xref).map((l, i) => (
                         <text key={i} className={`item-label ${l.kind}`} x={p.x} y={p.y + i * LABEL_LINE_H}>
                           {l.text}
                         </text>
@@ -1068,7 +1203,7 @@ export default function Editor({ armId, loadExample, onToast }: Props) {
                       >
                         <rect className="item-hit" x={(def.bounds?.x ?? 0) * k - 4} y={(def.bounds?.y ?? 0) * k - 4} width={(def.bounds?.w ?? def.width) * k + 8} height={(def.bounds?.h ?? def.height) * k + 8} />
                         {it.symbolId === JUNCTION_SYMBOL && <title>Junction. Alt+drag to start a wire from it.</title>}
-                        <GlyphBody def={def} scale={k} mirror={itemMirror(it)} />
+                        <GlyphBody def={def} prims={itemPrims(it, def)} />
                       </g>
                     </g>
                   )
@@ -1152,7 +1287,7 @@ export default function Editor({ armId, loadExample, onToast }: Props) {
             )}
             {armedDef && (
               <div className="canvas-hint" role="status">
-                Placing <strong>{armedDef.name}</strong>. Click to place, <kbd>R</kbd> rotate, <kbd>F</kbd> flip, <kbd>Esc</kbd> stop
+                Placing <strong>{armedDef.name}</strong>. Click to place, <kbd>R</kbd> rotate, <kbd>F</kbd> flip, <kbd>Esc</kbd> stop{armedDef.id === NET_LABEL_SYMBOL && '. It takes the name of an unpaired label, so two clicks make a link'}
               </div>
             )}
             {drawTool && !armedDef && (
@@ -1201,6 +1336,7 @@ export default function Editor({ armId, loadExample, onToast }: Props) {
             )}
           </div>
         </div>
+        <SheetTabs sheets={sheetSummaries} onOpen={openSheet} onAdd={addSheet} />
       </section>
 
       <aside className="inspector" aria-label="Inspector">
@@ -1229,6 +1365,17 @@ export default function Editor({ armId, loadExample, onToast }: Props) {
           onFitSheet={fitToSheet}
           onShrink={shrinkAndFit}
           onScaleAll={scaleAll}
+          sheets={sheetSummaries}
+          activeIndex={activeIndex}
+          nets={nets}
+          netIssues={issues}
+          onOpenSheet={openSheet}
+          onAddSheet={addSheet}
+          onMoveSheet={moveSheet}
+          onDeleteSheet={deleteSheet}
+          onNetName={(id, name) => dispatch({ type: 'net-name', id, name })}
+          onRenameNet={(from, to) => dispatch({ type: 'project-rename-net', from, to })}
+          onJump={jumpTo}
         />
       </aside>
     </div>

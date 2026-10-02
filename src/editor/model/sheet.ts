@@ -127,6 +127,35 @@ export const blockBox = (size: PaperSize): Box => {
   return { x: f.x + f.w - BLOCK_W, y: f.y + f.h - BLOCK_H, w: BLOCK_W, h: BLOCK_H }
 }
 
+/**
+ * The zone a point falls in, as printed in the margin: a row letter then a column number, e.g. "C4".
+ * Points outside the frame clamp to the nearest edge zone.
+ */
+export function zoneOf(size: PaperSize, x: number, y: number): string {
+  const { cols, rows } = PAPER[size]
+  const f = frameBox(size)
+  const col = Math.min(cols - 1, Math.max(0, Math.floor(((x - f.x) / f.w) * cols)))
+  const row = Math.min(rows - 1, Math.max(0, Math.floor(((y - f.y) / f.h) * rows)))
+  return `${String.fromCharCode(65 + row)}${col + 1}`
+}
+
+/** Where a sheet sits in a multi-sheet drawing (1-based), used to fill the title block's Sheet cell. */
+export interface SheetPosition {
+  index: number
+  total: number
+}
+
+const DEFAULT_SHEET_FIELD = '1 / 1'
+
+/**
+ * What the title block's Sheet cell shows. In a drawing with several sheets an empty or untouched
+ * "1 / 1" becomes "n / total" automatically; anything the user typed is kept as it is.
+ */
+export function sheetFieldValue(stored: string, pos?: SheetPosition): string {
+  if (pos && pos.total > 1 && (stored.trim() === '' || stored === DEFAULT_SHEET_FIELD)) return `${pos.index} / ${pos.total}`
+  return stored
+}
+
 /* ------------------------------------------------------------------ */
 
 const line = (x1: number, y1: number, x2: number, y2: number, style?: PrimStyle): Prim => ({ k: 'line', x1, y1, x2, y2, style })
@@ -194,7 +223,7 @@ function logoTile(b: Box): Prim[] {
 }
 
 /** All sheet artwork, in sheet coordinates (paper top-left is 0,0). */
-export function sheetPrims(sheet: SheetConfig): Prim[] {
+export function sheetPrims(sheet: SheetConfig, pos?: SheetPosition): Prim[] {
   const { w: W, h: H, cols, rows } = PAPER[sheet.size]
   const f = frameBox(sheet.size)
   const b = blockBox(sheet.size)
@@ -230,7 +259,8 @@ export function sheetPrims(sheet: SheetConfig): Prim[] {
     row.forEach((cell, c) => {
       if (c > 0) out.push(line(x, y, x, y + ROW_H, thin))
       const size = cell.big ? 17 : cell.small ? 14 : 15
-      const value = fit(sheet.fields[cell.key], cell.w - 16, size)
+      const raw = cell.key === 'sheet' ? sheetFieldValue(sheet.fields.sheet, pos) : sheet.fields[cell.key]
+      const value = fit(raw, cell.w - 16, size)
       out.push(text(x + 8, y + 14, cell.label.toUpperCase(), 9, 600, 'start', { opacity: 0.65, ls: 0.6 }))
       if (value) out.push(text(x + 8, y + 37, value, size, cell.big ? 700 : 600))
       x += cell.w

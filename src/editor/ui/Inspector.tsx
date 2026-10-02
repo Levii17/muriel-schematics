@@ -6,6 +6,8 @@ import type { FitPlan } from '@/editor/actions/checks'
 import type { Selection } from '@/editor/actions/select'
 import { scaleDrawing } from '@/editor/model/doc'
 import { defOf, itemScale } from '@/editor/model/geometry'
+import { isNetLabel, netKey, netNameOf } from '@/editor/model/netlabel'
+import type { NetGroup, NetIssue, NetLabelRef } from '@/editor/model/nets'
 import { NOTE_SIZES, noteRot } from '@/editor/model/notes'
 import type { PaperSize, SheetConfig, TitleFields } from '@/editor/model/sheet'
 import { FIELD_DEFS, PAPER_ORDER } from '@/editor/model/sheet'
@@ -28,6 +30,10 @@ import {
   TrashIcon,
 } from '@/shared/Icons'
 import { SCALES } from '@/symbols/scale'
+
+import { CommitField } from './CommitField'
+import type { SheetSummary } from './ProjectPanel'
+import { NetLabelFields, NetsPanel, SheetsPanel } from './ProjectPanel'
 
 export interface InspectorProps {
   doc: Doc
@@ -54,6 +60,18 @@ export interface InspectorProps {
   onFitSheet: () => void
   onShrink: () => void
   onScaleAll: (factor: number) => void
+  /** The sheets of the drawing and which one is open. */
+  sheets: SheetSummary[]
+  activeIndex: number
+  nets: NetGroup[]
+  netIssues: NetIssue[]
+  onOpenSheet: (id: string) => void
+  onAddSheet: () => void
+  onMoveSheet: (id: string, dir: -1 | 1) => void
+  onDeleteSheet: (id: string) => void
+  onNetName: (id: string, name: string) => void
+  onRenameNet: (from: string, to: string) => void
+  onJump: (ref: NetLabelRef) => void
 }
 
 const ALIGN_BUTTONS: { mode: AlignMode; label: string; icon: ReactNode }[] = [
@@ -113,6 +131,34 @@ export function Inspector(p: InspectorProps) {
 
   if (items.length === 0 && notes.length === 0 && shapes.length === 0 && wires.length > 0) {
     return <WireFields wires={wires} ends={wires.length === 1 ? `${name(wires[0].a)} → ${name(wires[0].b)}` : ''} onStyle={p.onWireStyle} onReset={p.onResetRoute} onDelete={p.onDelete} />
+  }
+
+  if (items.length === 1 && notes.length === 0 && isNetLabel(items[0])) {
+    const item = items[0]
+    const key = netKey(netNameOf(item))
+    const partners = (key && p.nets.find((g) => g.key === key)?.labels.filter((l) => l.itemId !== item.id)) || []
+    return (
+      <div className="inspector-body">
+        <p className="eyebrow">Selected{wires.length ? ` · +${wires.length} ${wires.length === 1 ? 'wire' : 'wires'}` : ''}</p>
+        <h2>Net label</h2>
+        <NetLabelFields
+          item={item}
+          partners={partners}
+          sheetNames={p.sheets.map((s) => s.name)}
+          activeIndex={p.activeIndex}
+          suggestions={p.nets.map((g) => g.name)}
+          issues={p.netIssues}
+          onName={(name) => p.onNetName(item.id, name)}
+          onJump={p.onJump}
+        />
+        {item.labelOffset && (
+          <button className="btn small" onClick={() => p.onResetLabel(item.id)}>Reset reference position</button>
+        )}
+        <SizeControl scales={items.map(itemScale)} onStep={p.onResize} onSet={p.onSetScale} />
+        <PartActions onRotate={p.onRotate} onFlip={p.onFlip} onDuplicate={p.onDuplicate} onDelete={p.onDelete} />
+        <p className="muted small">The wire attaches at the point of the flag. Flip it (F) to put the point on the other side.</p>
+      </div>
+    )
   }
 
   if (items.length === 1 && notes.length === 0) {
@@ -179,8 +225,10 @@ export function Inspector(p: InspectorProps) {
   return (
     <div className="inspector-body">
       <p className="eyebrow">Editor</p>
-      <h2>{doc.items.length} parts · {doc.wires.length} wires</h2>
+      <h2>{doc.items.length} parts · {doc.wires.length} wires{p.sheets.length > 1 ? ` · sheet ${p.activeIndex + 1} of ${p.sheets.length}` : ''}</h2>
       <p className="muted small">Your drawing is saved in this browser automatically.</p>
+      <SheetsPanel sheets={p.sheets} onOpen={p.onOpenSheet} onAdd={p.onAddSheet} onMove={p.onMoveSheet} onDelete={p.onDeleteSheet} />
+      <NetsPanel nets={p.nets} issues={p.netIssues} activeIndex={p.activeIndex} onRename={p.onRenameNet} onJump={p.onJump} />
       <DrawingSize doc={doc} onScaleAll={p.onScaleAll} />
       <SheetForm sheet={doc.sheet} conflictCount={p.conflictCount} plan={p.fitPlan} shrink={p.shrinkPlan} onShrink={p.onShrink} onFit={p.onFitSheet} onChange={p.onSheet} />
       <h3>Shortcuts</h3>
@@ -200,6 +248,7 @@ export function Inspector(p: InspectorProps) {
         <dt><kbd>R</kbd></dt><dd>Rotate</dd>
         <dt><kbd>F</kbd> <kbd>Shift</kbd>+<kbd>F</kbd></dt><dd>Flip left-right / top-bottom</dd>
         <dt><kbd>[</kbd> <kbd>]</kbd></dt><dd>Smaller / larger part</dd>
+        <dt>Net label</dt><dd>Same name = connected, across sheets. Click a name under Nets to jump to it</dd>
         <dt><kbd>Del</kbd></dt><dd>Delete selection</dd>
         <dt><kbd>←↑↓→</kbd></dt><dd>Nudge (Shift = 5 cells)</dd>
         <dt><kbd>Ctrl</kbd>+<kbd>Z</kbd></dt><dd>Undo / <kbd>Shift</kbd> redo</dd>
@@ -212,35 +261,6 @@ export function Inspector(p: InspectorProps) {
 
 function LabelField({ value, onCommit }: { value: string; onCommit: (v: string) => void }) {
   return <CommitField label="Label" value={value} onCommit={onCommit} placeholder="e.g. Q1" maxLength={16} mono />
-}
-
-/** Text input that commits on blur or Enter, so typing does not flood the undo history. */
-function CommitField({
-  label, value, onCommit, placeholder, maxLength, mono = false,
-}: {
-  label: string
-  value: string
-  onCommit: (v: string) => void
-  placeholder?: string
-  maxLength: number
-  mono?: boolean
-}) {
-  const [v, setV] = useState(value)
-  useEffect(() => setV(value), [value]) // follow undo/redo and external changes
-  const commit = () => v.trim() !== value && onCommit(v.trim())
-  return (
-    <label className={`field${mono ? ' mono-field' : ''}`}>
-      <span>{label}</span>
-      <input
-        value={v}
-        maxLength={maxLength}
-        onChange={(e) => setV(e.target.value)}
-        onBlur={commit}
-        onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
-        placeholder={placeholder}
-      />
-    </label>
-  )
 }
 
 /** Stepper for part size. Shows the shared size, or "mixed" when the selection differs. */

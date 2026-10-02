@@ -668,6 +668,23 @@ const junction: SymbolDef = {
   terminals: [term('1', '', 'Connection point', 20, 20, 'io', 'any')],
 }
 
+/** Pennant with one terminal at its point. The editor swaps the placeholder text for the label's own name. */
+const netLabel: SymbolDef = {
+  id: 'net-label',
+  name: 'Net label',
+  category: 'connect',
+  reference: '',
+  summary: 'A named wire end. Labels with the same name are connected, on the same sheet or on another.',
+  usage:
+    'Wire the point of the flag to a conductor and give it a name such as L1 or PE. Place another label with that name where the conductor continues, even on a different sheet, and the two are treated as one net. Each label shows where its partners are, for example "2/C4" for sheet 2, zone C4.',
+  tags: ['net', 'label', 'net label', 'off-sheet', 'connector', 'sheet', 'link', 'flag', 'cross reference', 'continuation', 'name'],
+  width: 120,
+  height: 40,
+  bounds: { x: 0, y: 4, w: 120, h: 32 },
+  body: [poly([0, 20], [14, 6], [120, 6], [120, 34], [14, 34], [0, 20]), text(67, 25, 'NET', 13, 600, 'middle')],
+  terminals: [term('1', '', 'Wire end', 0, 20, 'io', 'left')],
+}
+
 export const SYMBOLS: SymbolDef[] = [
   ...breakers,
   ...isolators,
@@ -688,4 +705,5 @@ export const SYMBOLS: SymbolDef[] = [
   ...meters,
   ...passives,
   junction,
+  netLabel,
 ]

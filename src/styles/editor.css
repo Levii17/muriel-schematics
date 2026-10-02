@@ -215,3 +215,31 @@
 .canvas.is-draw { cursor: crosshair; }
 .handle.shape { fill: var(--surface); stroke: var(--accent); cursor: nwse-resize; }
 .rail-sep { display: block; height: 1px; margin: 4px 6px; background: var(--line); }
+/* ---- sheets and net labels ---- */
+.sheet-tabs { display: flex; align-items: stretch; gap: 2px; padding: 6px 8px 0; border-top: 1px solid var(--line); background: var(--surface); overflow-x: auto; flex: none; }
+.sheet-tab { display: inline-flex; align-items: center; gap: 8px; max-width: 220px; height: 32px; padding: 0 12px; border: 1px solid var(--line); border-bottom: none; border-radius: 8px 8px 0 0; background: var(--surface-2); color: var(--muted); font: 13px var(--font-sans); cursor: pointer; }
+.sheet-tab:hover { color: var(--ink); }
+.sheet-tab.is-active { background: var(--bg); color: var(--ink); border-color: var(--line-strong); font-weight: 600; }
+.sheet-tab .mono { font-size: 12px; color: var(--accent); }
+.sheet-tab-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sheet-tab-add { align-self: center; margin-left: 4px; width: 30px; height: 30px; }
+
+.sheet-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.sheet-list li { display: flex; align-items: center; gap: 2px; border-radius: 8px; }
+.sheet-list li.is-active { background: var(--accent-soft); }
+.sheet-list .icon-btn { width: 28px; height: 28px; flex: none; }
+.sheet-open { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 8px; border: none; background: transparent; color: var(--ink); font: 13px var(--font-sans); text-align: left; cursor: pointer; }
+.sheet-open .mono { color: var(--accent); font-size: 12px; }
+.sheet-open-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.net-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.net-list .field input { height: 30px; font-family: var(--font-mono); }
+.net-refs { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+.ref-chip { height: 24px; padding: 0 8px; border-radius: 999px; border: 1px solid var(--line-strong); background: var(--surface-2); color: var(--ink); font: 12px var(--font-mono); cursor: pointer; }
+.ref-chip.wide { font-family: var(--font-sans); }
+.ref-chip:hover { border-color: var(--accent); color: var(--accent); }
+.link-btn { border: none; background: none; padding: 0; color: var(--ink); font: inherit; text-decoration: underline; cursor: pointer; }
+
+.net-warn-box { fill: none; stroke: var(--warm); stroke-width: 1.5; stroke-dasharray: 3 3; pointer-events: none; }
+.item-label.xref { font-family: var(--font-mono); font-size: 12px; font-weight: 500; fill: var(--accent); }
+.chip-btn.warn-chip { border-color: var(--warm); color: var(--warm); background: color-mix(in srgb, var(--warm) 10%, transparent); }

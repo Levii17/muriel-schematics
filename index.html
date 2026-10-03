@@ -2,39 +2,21 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta
-      name="description"
-      content="Muriel Schematics: a searchable library of IEC-style electrical symbols and a browser-based schematic editor with drawing sheet and title block."
-    />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="description" content="Muriel Schematics: a searchable library of IEC-style electrical symbols and a browser-based schematic editor with drawing sheet and title block." />
     <meta name="theme-color" content="#122126" />
     <meta name="color-scheme" content="light dark" />
     <link rel="icon" href="./favicon.ico" sizes="48x48" />
-    <link
-      rel="icon"
-      type="image/png"
-      sizes="32x32"
-      href="./favicon-32x32.png"
-    />
-    <link
-      rel="icon"
-      type="image/png"
-      sizes="16x16"
-      href="./favicon-16x16.png"
-    />
-    <link
-      rel="apple-touch-icon"
-      sizes="180x180"
-      href="./apple-touch-icon.png"
-    />
+    <link rel="icon" type="image/png" sizes="32x32" href="./favicon-32x32.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="./favicon-16x16.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="./apple-touch-icon.png" />
     <link rel="manifest" href="./site.webmanifest" />
-    <title>Muriel Schematics - Electrical Symbol Library &amp; Editor</title>
+    <title>Muriel Schematics — electrical symbol library &amp; editor</title>
     <script>
       // Apply the saved theme before first paint to avoid a flash.
       try {
-        var t = localStorage.getItem("es.theme");
-        if (t === "light" || t === "dark")
-          document.documentElement.dataset.theme = t;
+        var t = localStorage.getItem('es.theme');
+        if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t;
       } catch (e) {}
     </script>
   </head>

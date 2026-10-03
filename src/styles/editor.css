@@ -46,21 +46,24 @@
 .editor-toolbar {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px 12px;
   padding: 6px 10px;
   border-bottom: 1px solid var(--line);
   background: var(--surface);
   flex-wrap: wrap;
 }
-.editor-toolbar .grow { flex: 1; }
-.editor-toolbar .btn + .btn { margin-left: 4px; }
-.editor-toolbar .sep { width: 1px; height: 22px; background: var(--line); margin: 0 6px; }
+.editor-toolbar .grow { flex: 1; min-width: 0; }
+.editor-toolbar .sep { width: 1px; height: 22px; background: var(--line); margin: 0 6px; flex: none; }
+.tb-group { display: flex; align-items: center; gap: 2px; }
+.tb-doc { gap: 10px; flex-wrap: wrap; }
+.editor-toolbar .icon-btn[aria-pressed='true'] { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+.tb-panel { gap: 6px; }
+.tb-panel[aria-pressed='true'] { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+.tb-badge { display: inline-grid; place-items: center; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--accent); color: var(--accent-ink); font-size: 11px; font-weight: 600; }
+.btn svg { flex: none; }
 .zoom { min-width: 46px; text-align: center; font-size: 13px; color: var(--muted); }
 
 .stage-body { display: flex; flex: 1; min-height: 0; }
-.tool-rail { display: flex; flex-direction: column; gap: 4px; padding: 8px 6px; width: 50px; border-right: 1px solid var(--line); background: var(--surface); }
-.tool-rail .icon-btn { border-color: transparent; }
-.tool-rail .icon-btn[aria-pressed='true'] { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
 .canvas-wrap { position: relative; flex: 1; min-width: 0; min-height: 0; background: var(--bg); }
 .canvas { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; color: var(--ink); cursor: default; user-select: none; }
 .canvas.is-armed { cursor: crosshair; }
@@ -124,17 +127,6 @@
 .shortcuts { display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; margin: 0; font-size: 13px; }
 .shortcuts dt { white-space: nowrap; }
 .shortcuts dd { margin: 0; color: var(--muted); }
-
-@media (max-width: 1000px) {
-  .editor { grid-template-columns: 200px minmax(0, 1fr); }
-  .inspector { display: none; }
-  .mini-glyph { width: 40px; height: 38px; }
-}
-@media (max-width: 640px) {
-  .editor { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) 190px; }
-  .stage { order: 1; }
-  .palette { order: 2; border-right: 0; border-top: 1px solid var(--line); }
-}
 
 .tb-switch { margin-left: 2px; font-size: 13px; }
 .row.between { justify-content: space-between; align-items: center; }
@@ -214,7 +206,6 @@
 .shape.preview .shape-arrow { fill: var(--accent); }
 .canvas.is-draw { cursor: crosshair; }
 .handle.shape { fill: var(--surface); stroke: var(--accent); cursor: nwse-resize; }
-.rail-sep { display: block; height: 1px; margin: 4px 6px; background: var(--line); }
 /* ---- sheets and net labels ---- */
 .sheet-tabs { display: flex; align-items: stretch; gap: 2px; padding: 6px 8px 0; border-top: 1px solid var(--line); background: var(--surface); overflow-x: auto; flex: none; }
 .sheet-tab { display: inline-flex; align-items: center; gap: 8px; max-width: 220px; height: 32px; padding: 0 12px; border: 1px solid var(--line); border-bottom: none; border-radius: 8px 8px 0 0; background: var(--surface-2); color: var(--muted); font: 13px var(--font-sans); cursor: pointer; }
@@ -243,3 +234,153 @@
 .net-warn-box { fill: none; stroke: var(--warm); stroke-width: 1.5; stroke-dasharray: 3 3; pointer-events: none; }
 .item-label.xref { font-family: var(--font-mono); font-size: 12px; font-weight: 500; fill: var(--accent); }
 .chip-btn.warn-chip { border-color: var(--warm); color: var(--warm); background: color-mix(in srgb, var(--warm) 10%, transparent); }
+
+/* With a mouse and room to spare, zoom floats over the canvas corner instead of crowding the toolbar. */
+.stage { position: relative; }
+@media (min-width: 1100px) and (not (pointer: coarse)) {
+  .tb-view {
+    position: absolute;
+    left: 12px;
+    bottom: 54px;
+    z-index: 6;
+    padding: 2px;
+    border-radius: 12px;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    box-shadow: var(--shadow);
+  }
+}
+
+/* ---- popover menus ---- */
+.menu-pop { z-index: 60; overflow: auto; padding: 6px; border-radius: 12px; background: var(--surface); border: 1px solid var(--line-strong); box-shadow: var(--shadow); }
+.menu-item { all: unset; box-sizing: border-box; display: flex; align-items: center; gap: 8px; width: 100%; min-height: 36px; padding: 6px 10px; border-radius: 8px; font-size: 14px; color: var(--ink); cursor: pointer; }
+.menu-item:hover:not(:disabled), .menu-item:focus-visible { background: var(--surface-2); }
+.menu-item:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.menu-item:disabled { opacity: 0.4; cursor: default; }
+.menu-check { width: 18px; display: inline-grid; place-items: center; color: var(--accent); flex: none; }
+.menu-label { flex: 1; }
+.menu-hint { font-size: 12px; color: var(--muted); background: none; border: 0; padding: 0; }
+.menu-sep { border: 0; border-top: 1px solid var(--line); margin: 4px 2px; }
+
+.hint-btn { pointer-events: auto; margin-left: 12px; padding: 4px 12px; border-radius: 8px; border: 1px solid color-mix(in srgb, var(--bg) 55%, transparent); background: transparent; color: inherit; font: 600 13px var(--font-sans); cursor: pointer; }
+
+.panel-head { position: sticky; top: 0; z-index: 2; align-items: center; justify-content: space-between; padding: 8px 8px 8px 16px; background: var(--surface); border-bottom: 1px solid var(--line); flex: none; }
+.panel-head h2 { font-size: 16px; }
+.drawer-scrim { display: none; }
+
+/* Shown only where the palette and inspector slide over the canvas. */
+.only-compact { display: none !important; }
+.only-touch { display: none !important; }
+
+/* ---- smaller screens ---- */
+.canvas, .editor-toolbar .icon-btn, .editor-toolbar .btn { -webkit-tap-highlight-color: transparent; -webkit-touch-callout: none; }
+.main-editor { overscroll-behavior: none; }
+
+/* Palette and inspector leave the layout and slide over the canvas, so the drawing keeps the whole width. */
+@media (max-width: 1099px) {
+  .only-compact { display: inline-flex !important; }
+  .panel-head.only-compact { display: flex !important; }
+  .editor { grid-template-columns: minmax(0, 1fr); }
+  .palette, .inspector {
+    position: fixed;
+    top: var(--header-h);
+    bottom: 0;
+    z-index: 40;
+    width: min(340px, 88vw);
+    overflow: auto;
+    box-shadow: var(--shadow);
+    visibility: hidden;
+    transition: transform 0.22s ease, visibility 0s linear 0.22s;
+  }
+  .palette { left: 0; transform: translateX(-104%); border-right: 1px solid var(--line); }
+  .inspector { right: 0; transform: translateX(104%); border-left: 1px solid var(--line); }
+  .palette.is-open, .inspector.is-open { transform: none; visibility: visible; transition-delay: 0s; }
+  .palette-list { overflow: visible; flex: none; }
+  .palette-search { position: sticky; top: 49px; z-index: 1; background: var(--surface); }
+  .drawer-scrim { display: block; position: fixed; inset: var(--header-h) 0 0 0; z-index: 35; border: 0; padding: 0; background: rgb(0 0 0 / 0.38); }
+  .mini-glyph { width: 44px; height: 40px; }
+}
+
+/* Phones: tools sit at the bottom where a thumb reaches, in a row that scrolls sideways, and panels become sheets. */
+@media (max-width: 639px) {
+  .stage-body { order: 1; }
+  .sheet-tabs { order: 2; padding-top: 4px; }
+  .editor-toolbar {
+    order: 3;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    gap: 4px 14px;
+    border-bottom: 0;
+    border-top: 1px solid var(--line);
+    padding: 6px 10px calc(6px + env(safe-area-inset-bottom, 0px));
+    scrollbar-width: none;
+    overscroll-behavior-x: contain;
+    /* Shadows appear at an edge only while there is more to scroll to. */
+    background:
+      linear-gradient(to right, var(--surface) 30%, transparent) left center / 28px 100% no-repeat local,
+      linear-gradient(to left, var(--surface) 30%, transparent) right center / 28px 100% no-repeat local,
+      radial-gradient(farthest-side at 0 50%, rgb(0 0 0 / 0.2), transparent) left center / 12px 100% no-repeat scroll,
+      radial-gradient(farthest-side at 100% 50%, rgb(0 0 0 / 0.2), transparent) right center / 12px 100% no-repeat scroll,
+      var(--surface);
+  }
+  .editor-toolbar::-webkit-scrollbar { display: none; }
+  .editor-toolbar > *, .tb-group { flex: none; }
+  .editor-toolbar .grow { display: none; }
+  .tb-doc { flex-wrap: nowrap; }
+  .palette, .inspector {
+    top: auto;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: auto;
+    max-height: min(74dvh, 620px);
+    border: 0;
+    border-top: 1px solid var(--line-strong);
+    border-radius: 16px 16px 0 0;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  .palette { transform: translateY(104%); }
+  .inspector { transform: translateY(104%); }
+  .drawer-scrim { inset: 0; }
+  .canvas-hint { white-space: normal; max-width: calc(100% - 24px); bottom: 12px; display: flex; align-items: center; justify-content: center; text-align: center; }
+  .canvas-empty { max-width: 300px; padding: 0 12px; }
+  .sheet-tab { max-width: 160px; }
+}
+
+/* Short screens, such as a phone on its side: keep the toolbar to one scrolling row so the drawing has room. */
+@media (max-height: 520px) {
+  :root { --header-h: 46px; }
+  .editor-toolbar { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; padding-top: 3px; padding-bottom: 3px; }
+  .editor-toolbar::-webkit-scrollbar { display: none; }
+  .editor-toolbar > *, .tb-group { flex: none; }
+  .editor-toolbar .grow { display: none; }
+  .tb-doc { flex-wrap: nowrap; }
+  .sheet-tabs { padding-top: 2px; }
+  .sheet-tab { height: 28px; }
+  .palette, .inspector { max-height: none; }
+}
+
+/* A finger needs bigger targets than a mouse, and has no hover or keyboard to fall back on. */
+@media (pointer: coarse) {
+  .only-touch { display: inline-grid !important; }
+  .editor .icon-btn { width: 44px; height: 44px; }
+  .editor .btn.small { min-height: 44px; padding: 0 14px; }
+  .editor-toolbar .switch { min-height: 44px; }
+  .editor-toolbar .switch input { width: 22px; height: 22px; }
+  .editor-toolbar .chip-btn { min-height: 40px; }
+  .menu-item { min-height: 46px; font-size: 15px; }
+  .menu-hint { display: none; }
+  .palette-item { min-height: 56px; }
+  .field input, .palette-search input { font-size: 16px; height: 44px; }
+  .sheet-tab { height: 40px; }
+  .sheet-tab-add, .sheet-list .icon-btn { width: 40px; height: 40px; }
+  .ref-chip { height: 34px; padding: 0 12px; }
+  .hint-btn { min-height: 36px; }
+  /* Terminals and wires are drawn in drawing units, so size their touch area in screen pixels instead. */
+  .t-hit { r: calc(15px * var(--inv-k, 1)); }
+  .wire-hit { stroke-width: calc(26px * var(--inv-k, 1)); }
+}
+@media (pointer: coarse) and (max-height: 520px) {
+  .editor .icon-btn { width: 38px; height: 38px; }
+  .editor .btn.small { min-height: 38px; }
+}

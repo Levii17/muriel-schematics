@@ -46,3 +46,8 @@ export const TextIcon = () => <Icon><path d="M5 6V4h14v2M12 4v16M9 20h6" /></Ico
 export const LineIcon = () => <Icon><path d="M5 19 19 5" /><circle cx="5" cy="19" r="1.4" fill="currentColor" /><circle cx="19" cy="5" r="1.4" fill="currentColor" /></Icon>
 export const RectIcon = () => <Icon><rect x="4" y="6" width="16" height="12" rx="1" /></Icon>
 export const EllipseIcon = () => <Icon><ellipse cx="12" cy="12" rx="8" ry="6" /></Icon>
+export const PartsIcon = () => <Icon><rect x="4" y="4" width="7" height="7" rx="1.5" /><rect x="13" y="4" width="7" height="7" rx="1.5" /><rect x="4" y="13" width="7" height="7" rx="1.5" /><path d="M16.5 13v7M13 16.5h7" /></Icon>
+export const SlidersIcon = () => <Icon><path d="M4 7h9M17 7h3M4 17h3M11 17h9" /><circle cx="15" cy="7" r="2" /><circle cx="9" cy="17" r="2" /></Icon>
+export const MoreIcon = () => <Icon><circle cx="5" cy="12" r="1.2" fill="currentColor" /><circle cx="12" cy="12" r="1.2" fill="currentColor" /><circle cx="19" cy="12" r="1.2" fill="currentColor" /></Icon>
+export const MultiSelectIcon = () => <Icon><rect x="3" y="3" width="11" height="11" rx="2" /><rect x="10" y="10" width="11" height="11" rx="2" /><path d="m13.5 15.5 2 2 3.5-4" /></Icon>
+export const CheckIcon = () => <Icon><path d="m5 12.5 4.5 4.5L19 7" /></Icon>

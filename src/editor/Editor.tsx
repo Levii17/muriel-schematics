@@ -42,13 +42,17 @@ import type { Doc, Endpoint, Item, Rot, Shape, TextNote } from '@/editor/model/t
 import { junctions, wireGeometries } from '@/editor/model/wires'
 import { JUNCTION_SYMBOL, JUNCTION_TERMINAL, nearestWirePoint, shiftSegment, shiftWires, tapPoint, wireStroke } from '@/editor/model/wires'
 import { Inspector } from '@/editor/ui/Inspector'
+import type { MenuEntry } from '@/editor/ui/Menu'
+import { Menu } from '@/editor/ui/Menu'
 import { PaletteButton } from '@/editor/ui/PaletteButton'
 import type { SheetSummary } from '@/editor/ui/ProjectPanel'
 import { ShapeView, hitWidth } from '@/editor/ui/ShapeView'
 import { SheetTabs } from '@/editor/ui/SheetTabs'
+import type { Tap } from '@/editor/ui/gestures'
+import { isDoubleTap, pinchView } from '@/editor/ui/gestures'
 import { isTextTarget, usesSpace } from '@/editor/ui/keys'
 import type { Marquee, Tool, View, WireEdit } from '@/editor/ui/state'
-import { DRAG_THRESHOLD, LABEL_SNAP, MAX_ZOOM, MIN_ZOOM, PROJECT_KEY, SHAPE_TOOLS, SNAP_RADIUS, STORAGE_KEY } from '@/editor/ui/state'
+import { DRAG_THRESHOLD, LABEL_SNAP, MAX_ZOOM, MIN_ZOOM, PROJECT_KEY, SHAPE_TOOLS, SNAP_RADIUS, STORAGE_KEY, TOUCH_SLOP } from '@/editor/ui/state'
 import {
   CursorIcon,
   DuplicateIcon,
@@ -56,11 +60,17 @@ import {
   FlipHIcon,
   FlipVIcon,
   HandIcon,
+  ChevronDownIcon,
+  CloseIcon,
+  DownloadIcon,
   MinusIcon,
   PlusIcon,
-  PrintIcon,
+  MoreIcon,
+  MultiSelectIcon,
+  PartsIcon,
   RedoIcon,
   RotateIcon,
+  SlidersIcon,
   EllipseIcon,
   LineIcon,
   RectIcon,
@@ -74,6 +84,7 @@ import type { Pt } from '@/shared/geometry'
 import { snap } from '@/shared/geometry'
 import { printPages, printSheet } from '@/shared/print'
 import { loadJson, saveJson } from '@/shared/storage'
+import { useCoarsePointer } from '@/shared/useMedia'
 import { CATEGORIES, SYMBOLS, getSymbol } from '@/symbols'
 import { GlyphBody, Prims } from '@/symbols/Glyph'
 import { pivotOf } from '@/symbols/geometry'
@@ -120,7 +131,21 @@ export default function Editor({ armId, loadExample, onToast }: Props) {
   const [guides, setGuides] = useState<{ x?: number; y?: number }>({})
 
   const svgRef = useRef<SVGSVGElement>(null)
-  const panRef = useRef<{ sx: number; sy: number; vx: number; vy: number } | null>(null)
+  const panRef = useRef<{ sx: number; sy: number; vx: number; vy: number; tap?: boolean; moved?: boolean } | null>(null)
+
+  // Small screens: which slide-over panel is open, and the touch gestures that stand in for mouse and keys.
+  const coarse = useCoarsePointer()
+  const [panel, setPanel] = useState<'parts' | 'details' | null>(null)
+  /** Touch stand-in for holding Shift: taps add to the selection and a drag on empty space draws a box. */
+  const [multi, setMulti] = useState(false)
+  const touches = useRef(new Map<number, Pt>())
+  const pinch = useRef<{ ids: [number, number]; from: [Pt, Pt]; view: View } | null>(null)
+  const pinched = useRef(false)
+  const touchPlace = useRef<number | null>(null)
+  const slop = useRef(DRAG_THRESHOLD)
+  const downAt = useRef<Pt | null>(null)
+  const lastTap = useRef<Tap | null>(null)
+  const swallowDbl = useRef(false)
   const clipRef = useRef<Payload | null>(null)
   const editFocused = useRef(false)
   const pasteCount = useRef(0)
@@ -503,6 +528,8 @@ export default function Editor({ armId, loadExample, onToast }: Props) {
       e.preventDefault()
       setSpace(true)
     } else if (key === 'escape') {
+      setPanel(null)
+      setMulti(false)
       setArmed(null)
       setWiring(null)
       setGhost(null)
@@ -597,12 +624,58 @@ export default function Editor({ armId, loadExample, onToast }: Props) {
     return { at: { x: at.x + a.delta.x, y: at.y + a.delta.y }, guideX: a.guideX, guideY: a.guideY }
   }
 
+  /** Drop whatever a single pointer was in the middle of, without committing it (a second finger, or the system, took over). */
+  const cancelGestures = () => {
+    panRef.current = null
+    touchPlace.current = null
+    setPanning(false)
+    setWiring(null)
+    setDrag(null)
+    setLabelDrag(null)
+    setMarquee(null)
+    setWireEdit(null)
+    setShapeEdit(null)
+    setDrawing(null)
+    setGhost(null)
+    setGuides({})
+  }
+
+  /** Put the armed part down at world point `w`, snapped as usual. */
+  const placeArmed = (w: Pt) => {
+    const def = getSymbol(armed!)!
+    // Work the spot out from this point, not from the last hover: a tap has no hover before it.
+    const at = placementAt(def, w).at
+    const item: Item = { id: uid('i'), symbolId: def.id, x: at.x, y: at.y, rot: armedOrient.rot, label: nextLabel(doc.items, def) }
+    if (armedOrient.mirror) item.mirror = true
+    if (def.id === NET_LABEL_SYMBOL) item.net = suggestNetName(sheets)
+    dispatch({ type: 'add', item })
+    setSelection(sel({ items: [item.id], wires: [], notes: [] }))
+  }
+
   const onPointerDown = (e: ReactPointerEvent<SVGSVGElement>) => {
+    const touch = e.pointerType === 'touch'
+    if (touch) {
+      const r = svgRef.current!.getBoundingClientRect()
+      touches.current.set(e.pointerId, { x: e.clientX - r.left, y: e.clientY - r.top })
+      svgRef.current!.setPointerCapture(e.pointerId)
+      if (touches.current.size === 2) {
+        // A second finger turns whatever the first was doing into a pinch: zoom and pan together.
+        cancelGestures()
+        const ids = [...touches.current.keys()].slice(0, 2) as [number, number]
+        pinch.current = { ids, from: [touches.current.get(ids[0])!, touches.current.get(ids[1])!], view: viewRef.current }
+        pinched.current = true
+        return
+      }
+      if (touches.current.size > 2 || pinched.current) return
+    }
+    slop.current = touch ? TOUCH_SLOP : DRAG_THRESHOLD
+    downAt.current = { x: e.clientX, y: e.clientY }
     if (e.button !== 0 && e.button !== 1) return
     if (e.button === 1) e.preventDefault()
     const hit = (e.target as Element).closest('[data-kind]')
     const kind = hit?.getAttribute('data-kind')
     const w = toWorld(e)
+    const shift = e.shiftKey || multi
     svgRef.current!.setPointerCapture(e.pointerId)
 
     // Pan: Pan tool, Space held, or middle mouse. Works over anything.
@@ -669,14 +742,15 @@ export default function Editor({ armId, loadExample, onToast }: Props) {
       }
     }
     if (armed) {
-      const def = getSymbol(armed)!
-      // Work the spot out from this click, not from the last hover: a tap has no hover before it.
-      const at = placementAt(def, w).at
-      const item: Item = { id: uid('i'), symbolId: def.id, x: at.x, y: at.y, rot: armedOrient.rot, label: nextLabel(doc.items, def) }
-      if (armedOrient.mirror) item.mirror = true
-      if (def.id === NET_LABEL_SYMBOL) item.net = suggestNetName(sheets)
-      dispatch({ type: 'add', item })
-      setSelection(sel({ items: [item.id], wires: [], notes: [] }))
+      if (touch) {
+        // A finger hides the spot, so show the ghost and place when it lifts; drag to fine-tune first.
+        touchPlace.current = e.pointerId
+        const p = placementAt(getSymbol(armed)!, w)
+        setGuides({ x: p.guideX, y: p.guideY })
+        setGhost(p.at)
+        return
+      }
+      placeArmed(w)
       return
     }
     if (kind === 'label') {
@@ -689,37 +763,56 @@ export default function Editor({ armId, loadExample, onToast }: Props) {
       const id = hit!.getAttribute('data-id')!
       const list = kind === 'item' ? 'items' : kind === 'note' ? 'notes' : 'shapes'
       let next: Selection = selection
-      if (e.shiftKey) next = { ...selection, [list]: toggle(selection[list], id) }
+      if (shift) next = { ...selection, [list]: toggle(selection[list], id) }
       else if (!selection[list].includes(id)) next = sel({ [list]: [id] })
       setSelection(next)
-      if (next[list].includes(id)) setDrag({ ids: bodyIds(next), start: w, delta: { x: 0, y: 0 }, clickId: id, shift: e.shiftKey })
+      if (next[list].includes(id)) setDrag({ ids: bodyIds(next), start: w, delta: { x: 0, y: 0 }, clickId: id, shift })
       return
     }
     if (kind === 'wire') {
       const id = hit!.getAttribute('data-id')!
-      setSelection(e.shiftKey ? { ...selection, wires: toggle(selection.wires, id) } : sel({ wires: [id] }))
+      setSelection(shift ? { ...selection, wires: toggle(selection.wires, id) } : sel({ wires: [id] }))
       return
     }
-    // Empty canvas: start a box selection (a plain click, with no drag, just clears the selection).
-    setMarquee({ from: w, to: w, additive: e.shiftKey, sx: e.clientX, sy: e.clientY, moved: false })
+    // Empty canvas. A finger drags the view (a plain tap clears the selection); Multi-select turns it back into a
+    // selection box. A mouse or pen starts a box straight away (a plain click, with no drag, just clears the selection).
+    if (touch && !multi) {
+      panRef.current = { sx: e.clientX, sy: e.clientY, vx: viewRef.current.x, vy: viewRef.current.y, tap: true, moved: false }
+      setPanning(true)
+      return
+    }
+    setMarquee({ from: w, to: w, additive: shift, sx: e.clientX, sy: e.clientY, moved: false })
   }
 
   const onPointerMove = (e: ReactPointerEvent<SVGSVGElement>) => {
+    if (e.pointerType === 'touch' && touches.current.has(e.pointerId)) {
+      const r = svgRef.current!.getBoundingClientRect()
+      touches.current.set(e.pointerId, { x: e.clientX - r.left, y: e.clientY - r.top })
+      const pc = pinch.current
+      if (pc) {
+        const a = touches.current.get(pc.ids[0])
+        const b = touches.current.get(pc.ids[1])
+        if (a && b) setView(pinchView(pc.view, pc.from, [a, b], MIN_ZOOM, MAX_ZOOM))
+        return
+      }
+      if (pinched.current) return
+    }
     const w = toWorld(e)
     if (panRef.current) {
       const p = panRef.current
+      if (p.tap && !p.moved && Math.hypot(e.clientX - p.sx, e.clientY - p.sy) > slop.current) p.moved = true
       setView((v) => ({ ...v, x: p.vx + e.clientX - p.sx, y: p.vy + e.clientY - p.sy }))
     } else if (drawing) {
       setDrawing({ ...drawing, to: { x: Math.round(w.x / 10) * 10 + 0, y: Math.round(w.y / 10) * 10 + 0 }, constrain: e.shiftKey })
     } else if (shapeEdit) {
       const p = { x: Math.round(w.x / 10) * 10 + 0, y: Math.round(w.y / 10) * 10 + 0 }
-      const far = shapeEdit.moved || Math.hypot(e.clientX - shapeEdit.sx, e.clientY - shapeEdit.sy) > DRAG_THRESHOLD
+      const far = shapeEdit.moved || Math.hypot(e.clientX - shapeEdit.sx, e.clientY - shapeEdit.sy) > slop.current
       setShapeEdit({ ...shapeEdit, shape: resizeShape(shapeEdit.orig, shapeEdit.handle, p, e.shiftKey), moved: far })
     } else if (labelDrag) {
       const snapTo = (v: number) => Math.round(v / LABEL_SNAP) * LABEL_SNAP + 0
       setLabelDrag({ ...labelDrag, delta: { x: snapTo(w.x - labelDrag.start.x), y: snapTo(w.y - labelDrag.start.y) } })
     } else if (marquee) {
-      const moved = marquee.moved || Math.hypot(e.clientX - marquee.sx, e.clientY - marquee.sy) > DRAG_THRESHOLD
+      const moved = marquee.moved || Math.hypot(e.clientX - marquee.sx, e.clientY - marquee.sy) > slop.current
       setMarquee({ ...marquee, to: w, moved })
     } else if (drag) {
       const raw = { x: snap(w.x - drag.start.x), y: snap(w.y - drag.start.y) }
@@ -731,7 +824,7 @@ export default function Editor({ armId, loadExample, onToast }: Props) {
     } else if (wireEdit) {
       const snap10 = (v: number) => Math.round(v / 10) * 10 + 0
       const fixed = [...terminalPoints(doc.items), ...doc.wires.filter((x) => x.id !== wireEdit.id).flatMap((x) => x.via ?? [])]
-      const far = wireEdit.moved || Math.hypot(e.clientX - wireEdit.sx, e.clientY - wireEdit.sy) > DRAG_THRESHOLD
+      const far = wireEdit.moved || Math.hypot(e.clientX - wireEdit.sx, e.clientY - wireEdit.sy) > slop.current
       if (wireEdit.mode === 'move') {
         const raw = { x: snap10(w.x), y: snap10(w.y) }
         const a = alignDelta([raw], fixed, { x: 0, y: 0 }, 8)
@@ -762,9 +855,36 @@ export default function Editor({ armId, loadExample, onToast }: Props) {
 
   const onPointerUp = (e: ReactPointerEvent<SVGSVGElement>) => {
     svgRef.current?.releasePointerCapture?.(e.pointerId)
+    const touch = e.pointerType === 'touch'
+    if (touch) {
+      touches.current.delete(e.pointerId)
+      if (pinched.current) {
+        // The pinch is over, but a finger left on the glass must not turn into a tap or a drag.
+        if (touches.current.size < 2) pinch.current = null
+        if (touches.current.size === 0) pinched.current = false
+        lastTap.current = null
+        return
+      }
+    }
+    const tapped = touch && !!downAt.current && Math.hypot(e.clientX - downAt.current.x, e.clientY - downAt.current.y) <= slop.current
+    if (panRef.current?.tap && !panRef.current.moved) setSelection(EMPTY)
+    if (touchPlace.current === e.pointerId) {
+      touchPlace.current = null
+      placeArmed(toWorld(e))
+    }
     panRef.current = null
     setPanning(false)
     setGuides({})
+    // Browsers differ on whether a double-tap becomes a double-click, so do it here and ignore the native one.
+    if (tapped && !armed) {
+      const now: Tap = { t: e.timeStamp, x: e.clientX, y: e.clientY }
+      if (isDoubleTap(lastTap.current, now)) {
+        lastTap.current = null
+        swallowDbl.current = true
+        window.setTimeout(() => (swallowDbl.current = false), 500)
+        activateAt(e)
+      } else lastTap.current = now
+    }
     if (marquee) {
       if (marquee.moved) {
         const box = normBox(marquee.from, marquee.to)
@@ -842,7 +962,20 @@ export default function Editor({ armId, loadExample, onToast }: Props) {
     return hit && point ? { wireId: hit.wireId, point } : null
   }
 
+  const onPointerCancel = (e: ReactPointerEvent<SVGSVGElement>) => {
+    touches.current.delete(e.pointerId)
+    if (touches.current.size < 2) pinch.current = null
+    if (touches.current.size === 0) pinched.current = false
+    cancelGestures()
+  }
+
   const onDoubleClick = (e: React.MouseEvent<SVGSVGElement>) => {
+    if (swallowDbl.current) return
+    activateAt(e)
+  }
+
+  /** Double-click or double-tap: remove a waypoint of the selected wire, or edit the note under the pointer. */
+  const activateAt = (e: { clientX: number; clientY: number }) => {
     // Double-clicking a waypoint of the selected wire removes it.
     if (selection.wires.length === 1 && !selection.items.length && !selection.notes.length) {
       const wire = doc.wires.find((x) => x.id === selection.wires[0])
@@ -954,9 +1087,47 @@ export default function Editor({ armId, loadExample, onToast }: Props) {
   const selectedIsEmpty = isEmpty(selection)
   const allConflicts = conflictIds.length + conflictNoteIds.length + conflictShapeIds.length
 
+  const drawingIsEmpty = !doc.items.length && !doc.notes.length && !doc.shapes.length
+  const chooseTool = (t: Tool) => {
+    setTool(t)
+    setArmed(null)
+  }
+  const loadStarter = () => {
+    const ex = dolStarterExample()
+    dispatch({ type: 'load', doc: ex })
+    setSelection(EMPTY)
+    requestAnimationFrame(() => fit(ex))
+  }
+  const clearDrawing = () => {
+    dispatch({ type: 'load', doc: { items: [], wires: [], notes: [], shapes: [], sheet: doc.sheet } })
+    setSelection(EMPTY)
+  }
+  const togglePanel = (which: 'parts' | 'details') => setPanel((p) => (p === which ? null : which))
+
+  const exportEntries: MenuEntry[] = [
+    { label: 'PNG image', onSelect: exportPng, disabled: drawingIsEmpty },
+    { label: 'SVG file', onSelect: exportSvg, disabled: drawingIsEmpty },
+    { label: 'Print or save as PDF', onSelect: print },
+    ...(sheets.length > 1 ? [{ label: 'All sheets as one PDF', onSelect: printAll }] : []),
+  ]
+  const moreEntries: MenuEntry[] = [
+    { label: 'Select all', hint: 'Ctrl+A', onSelect: selectAll, disabled: drawingIsEmpty },
+    { label: 'Copy', hint: 'Ctrl+C', onSelect: () => copySelected(), disabled: !hasBody },
+    { label: 'Cut', hint: 'Ctrl+X', onSelect: cutSelected, disabled: !hasBody },
+    { label: 'Paste', hint: 'Ctrl+V', onSelect: pasteClipboard },
+    'separator',
+    { label: 'Load example circuit', onSelect: loadStarter },
+    { label: 'Clear drawing', onSelect: clearDrawing, disabled: drawingIsEmpty },
+  ]
+
   return (
     <div className="editor">
-      <aside className="palette" aria-label="Symbol palette">
+      {panel && <button className="drawer-scrim" aria-label="Close panel" onClick={() => setPanel(null)} />}
+      <aside className={`palette${panel === 'parts' ? ' is-open' : ''}`} aria-label="Symbol palette">
+        <div className="panel-head only-compact">
+          <h2>Parts</h2>
+          <button className="icon-btn" onClick={() => setPanel(null)} aria-label="Close palette"><CloseIcon /></button>
+        </div>
         <div className="palette-search">
           <input type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search symbols…" aria-label="Search palette" />
         </div>
@@ -982,55 +1153,75 @@ export default function Editor({ armId, loadExample, onToast }: Props) {
 
       <section className="stage">
         <div className="editor-toolbar" role="toolbar" aria-label="Editor actions">
-          <button className="icon-btn" onClick={() => dispatch({ type: 'undo' })} disabled={!proj.past.length} aria-label="Undo" title="Undo (Ctrl+Z)"><UndoIcon /></button>
-          <button className="icon-btn" onClick={() => dispatch({ type: 'redo' })} disabled={!proj.future.length} aria-label="Redo" title="Redo (Ctrl+Shift+Z)"><RedoIcon /></button>
-          <span className="sep" />
-          <button className="icon-btn" onClick={rotateSelected} disabled={!hasBody && !armed} aria-label="Rotate" title="Rotate (R)"><RotateIcon /></button>
-          <button className="icon-btn" onClick={() => flipSelected('h')} disabled={!hasBody && !armed} aria-label="Flip left-right" title="Flip left-right (F)"><FlipHIcon /></button>
-          <button className="icon-btn" onClick={() => flipSelected('v')} disabled={!hasBody && !armed} aria-label="Flip top-bottom" title="Flip top-bottom (Shift+F)"><FlipVIcon /></button>
-          <button className="icon-btn" onClick={duplicateSelected} disabled={!hasBody} aria-label="Duplicate selected" title="Duplicate (Ctrl+D)"><DuplicateIcon /></button>
-          <button className="icon-btn" onClick={deleteSelected} disabled={selectedIsEmpty} aria-label="Delete selected" title="Delete (Del)"><TrashIcon /></button>
-          <span className="sep" />
-          <button className="icon-btn" onClick={() => zoomAt(1 / 1.25)} aria-label="Zoom out" title="Zoom out"><MinusIcon /></button>
-          <span className="zoom mono" aria-live="polite">{Math.round(view.k * 100)}%</span>
-          <button className="icon-btn" onClick={() => zoomAt(1.25)} aria-label="Zoom in" title="Zoom in"><PlusIcon /></button>
-          <button className="icon-btn" onClick={() => fit(doc)} aria-label="Fit to content" title="Fit to content"><FitIcon /></button>
-          <span className="sep" />
-          <label className="switch tb-switch">
-            <input type="checkbox" checked={doc.sheet.enabled} onChange={(e) => { dispatch({ type: 'sheet', patch: { enabled: e.target.checked } }); if (e.target.checked) requestAnimationFrame(() => fit({ ...doc, sheet: { ...doc.sheet, enabled: true } })) }} />
-            <span>Sheet</span>
-          </label>
-          {allConflicts > 0 && (
-            <button className="chip-btn" onClick={() => setSelection(sel({ items: conflictIds, notes: conflictNoteIds, shapes: conflictShapeIds }))} title="Select what is outside the frame or under the title block">
-              <WarnIcon /> {allConflicts} off sheet
-            </button>
-          )}
-          {issues.length > 0 && (
-            <button className="chip-btn warn-chip" onClick={nextIssue} title="Jump to the next net label that needs attention">
-              <WarnIcon /> {issues.length} net {issues.length === 1 ? 'issue' : 'issues'}
-            </button>
-          )}
+          <button className="btn small tb-panel only-compact" aria-pressed={panel === 'parts'} onClick={() => togglePanel('parts')} title="Open the symbol palette">
+            <PartsIcon /> Parts
+          </button>
+
+          <div className="tb-group" role="group" aria-label="Tools">
+            <button className="icon-btn" aria-pressed={tool === 'select'} onClick={() => chooseTool('select')} aria-label="Select tool" title="Select (V). Drag empty space for a selection box"><CursorIcon /></button>
+            <button className="icon-btn" aria-pressed={tool === 'text'} onClick={() => chooseTool('text')} aria-label="Text tool" title="Text (T). Click the canvas, type, then click away"><TextIcon /></button>
+            <span className="sep" aria-hidden="true" />
+            <button className="icon-btn" aria-pressed={tool === 'line'} onClick={() => chooseTool('line')} aria-label="Line tool" title="Line (L). Drag to draw; Shift snaps to 45 degrees"><LineIcon /></button>
+            <button className="icon-btn" aria-pressed={tool === 'rect'} onClick={() => chooseTool('rect')} aria-label="Rectangle tool" title="Rectangle (B). Drag to draw; Shift makes a square"><RectIcon /></button>
+            <button className="icon-btn" aria-pressed={tool === 'ellipse'} onClick={() => chooseTool('ellipse')} aria-label="Ellipse tool" title="Ellipse (O). Drag to draw; Shift makes a circle"><EllipseIcon /></button>
+            <span className="sep" aria-hidden="true" />
+            <button className="icon-btn" aria-pressed={tool === 'pan'} onClick={() => chooseTool('pan')} aria-label="Pan tool" title="Pan (H). Or hold Space, or use the middle mouse button"><HandIcon /></button>
+          </div>
+
+          <div className="tb-group" role="group" aria-label="History">
+            <button className="icon-btn" onClick={() => dispatch({ type: 'undo' })} disabled={!proj.past.length} aria-label="Undo" title="Undo (Ctrl+Z)"><UndoIcon /></button>
+            <button className="icon-btn" onClick={() => dispatch({ type: 'redo' })} disabled={!proj.future.length} aria-label="Redo" title="Redo (Ctrl+Shift+Z)"><RedoIcon /></button>
+          </div>
+
+          <div className="tb-group" role="group" aria-label="Selection">
+            <button className="icon-btn" onClick={rotateSelected} disabled={!hasBody && !armed} aria-label="Rotate" title="Rotate (R)"><RotateIcon /></button>
+            <button className="icon-btn" onClick={() => flipSelected('h')} disabled={!hasBody && !armed} aria-label="Flip left-right" title="Flip left-right (F)"><FlipHIcon /></button>
+            <button className="icon-btn" onClick={() => flipSelected('v')} disabled={!hasBody && !armed} aria-label="Flip top-bottom" title="Flip top-bottom (Shift+F)"><FlipVIcon /></button>
+            <button className="icon-btn" onClick={duplicateSelected} disabled={!hasBody} aria-label="Duplicate selected" title="Duplicate (Ctrl+D)"><DuplicateIcon /></button>
+            <button className="icon-btn" onClick={deleteSelected} disabled={selectedIsEmpty} aria-label="Delete selected" title="Delete (Del)"><TrashIcon /></button>
+            <button className="icon-btn only-touch" aria-pressed={multi} onClick={() => setMulti((m) => !m)} aria-label="Select several" title="Select several: tap to add or remove parts, drag empty space for a box"><MultiSelectIcon /></button>
+          </div>
+
+          <div className="tb-group tb-view" role="group" aria-label="View">
+            <button className="icon-btn" onClick={() => zoomAt(1 / 1.25)} aria-label="Zoom out" title="Zoom out"><MinusIcon /></button>
+            <span className="zoom mono" aria-live="polite">{Math.round(view.k * 100)}%</span>
+            <button className="icon-btn" onClick={() => zoomAt(1.25)} aria-label="Zoom in" title="Zoom in"><PlusIcon /></button>
+            <button className="icon-btn" onClick={() => fit(doc)} aria-label="Fit to content" title="Fit to content"><FitIcon /></button>
+          </div>
+
+          <div className="tb-group tb-doc" role="group" aria-label="Drawing">
+            <label className="switch tb-switch">
+              <input type="checkbox" checked={doc.sheet.enabled} onChange={(e) => { dispatch({ type: 'sheet', patch: { enabled: e.target.checked } }); if (e.target.checked) requestAnimationFrame(() => fit({ ...doc, sheet: { ...doc.sheet, enabled: true } })) }} />
+              <span>Sheet</span>
+            </label>
+            {allConflicts > 0 && (
+              <button className="chip-btn" onClick={() => setSelection(sel({ items: conflictIds, notes: conflictNoteIds, shapes: conflictShapeIds }))} title="Select what is outside the frame or under the title block">
+                <WarnIcon /> {allConflicts} off sheet
+              </button>
+            )}
+            {issues.length > 0 && (
+              <button className="chip-btn warn-chip" onClick={nextIssue} title="Jump to the next net label that needs attention">
+                <WarnIcon /> {issues.length} net {issues.length === 1 ? 'issue' : 'issues'}
+              </button>
+            )}
+          </div>
+
           <span className="grow" />
-          <button className="btn small" onClick={() => { const ex = dolStarterExample(); dispatch({ type: 'load', doc: ex }); setSelection(EMPTY); requestAnimationFrame(() => fit(ex)) }} aria-label="Load example circuit" title="Load the motor starter example">Example</button>
-          <button className="btn small" onClick={() => { dispatch({ type: 'load', doc: { items: [], wires: [], notes: [], shapes: [], sheet: doc.sheet } }); setSelection(EMPTY) }} disabled={!doc.items.length && !doc.notes.length && !doc.shapes.length}>Clear</button>
-          <button className="icon-btn" onClick={print} aria-label="Print or save as PDF" title="Print / save as PDF"><PrintIcon /></button>
-          {sheets.length > 1 && <button className="btn small" onClick={printAll} title="Print or save every sheet as one PDF">All sheets</button>}
-          <button className="btn small" onClick={exportSvg} aria-label="Export SVG" title="Export as SVG">SVG</button>
-          <button className="btn small primary" onClick={exportPng} aria-label="Export PNG" title="Export as PNG">PNG</button>
+
+          <div className="tb-group" role="group" aria-label="File">
+            <button className="btn small tb-panel only-compact" aria-pressed={panel === 'details'} onClick={() => togglePanel('details')} title="Open the inspector">
+              <SlidersIcon /> Details{selCount > 0 ? <span className="tb-badge">{selCount}</span> : null}
+            </button>
+            <Menu label="Export and print" buttonClass="btn small primary" entries={exportEntries}>
+              <DownloadIcon /> Export <ChevronDownIcon />
+            </Menu>
+            <Menu label="More actions" buttonClass="icon-btn" entries={moreEntries}>
+              <MoreIcon />
+            </Menu>
+          </div>
         </div>
 
         <div className="stage-body">
-          <nav className="tool-rail" aria-label="Tools">
-            <button className="icon-btn" aria-pressed={tool === 'select'} onClick={() => setTool('select')} aria-label="Select tool" title="Select (V). Drag empty space for a selection box"><CursorIcon /></button>
-            <button className="icon-btn" aria-pressed={tool === 'text'} onClick={() => setTool('text')} aria-label="Text tool" title="Text (T). Click the canvas, type, then click away"><TextIcon /></button>
-            <span className="rail-sep" aria-hidden="true" />
-            <button className="icon-btn" aria-pressed={tool === 'line'} onClick={() => setTool('line')} aria-label="Line tool" title="Line (L). Drag to draw; Shift snaps to 45 degrees"><LineIcon /></button>
-            <button className="icon-btn" aria-pressed={tool === 'rect'} onClick={() => setTool('rect')} aria-label="Rectangle tool" title="Rectangle (B). Drag to draw; Shift makes a square"><RectIcon /></button>
-            <button className="icon-btn" aria-pressed={tool === 'ellipse'} onClick={() => setTool('ellipse')} aria-label="Ellipse tool" title="Ellipse (O). Drag to draw; Shift makes a circle"><EllipseIcon /></button>
-            <span className="rail-sep" aria-hidden="true" />
-            <button className="icon-btn" aria-pressed={tool === 'pan'} onClick={() => setTool('pan')} aria-label="Pan tool" title="Pan (H). Or hold Space, or use the middle mouse button"><HandIcon /></button>
-          </nav>
-
           <div className="canvas-wrap">
             <svg
               ref={svgRef}
@@ -1038,11 +1229,13 @@ export default function Editor({ armId, loadExample, onToast }: Props) {
               onPointerDown={onPointerDown}
               onPointerMove={onPointerMove}
               onPointerUp={onPointerUp}
+              onPointerCancel={onPointerCancel}
               onPointerLeave={() => { setGhost(null); setGuides({}) }}
               onDoubleClick={onDoubleClick}
               onAuxClick={(e) => e.preventDefault()}
               aria-label="Schematic canvas"
               role="application"
+              style={{ '--inv-k': 1 / view.k } as React.CSSProperties}
             >
               <defs>
                 <pattern id="grid-dots" width="20" height="20" patternUnits="userSpaceOnUse" patternTransform={`translate(${view.x} ${view.y}) scale(${view.k})`}>
@@ -1282,22 +1475,38 @@ export default function Editor({ armId, loadExample, onToast }: Props) {
             {!doc.items.length && !doc.notes.length && !doc.shapes.length && !armed && !editing && !drawTool && (
               <div className="canvas-empty">
                 <p><strong>Empty canvas</strong></p>
-                <p className="muted">Pick a symbol on the left, then click here to place it. Drag from one terminal dot to another to draw a wire.</p>
+                <p className="muted">
+                  {coarse
+                    ? 'Open Parts, pick a symbol, then touch the canvas to place it. Drag from one terminal dot to another to draw a wire. Pinch to zoom, drag to move around.'
+                    : 'Pick a symbol on the left, then click here to place it. Drag from one terminal dot to another to draw a wire.'}
+                </p>
               </div>
             )}
             {armedDef && (
               <div className="canvas-hint" role="status">
-                Placing <strong>{armedDef.name}</strong>. Click to place, <kbd>R</kbd> rotate, <kbd>F</kbd> flip, <kbd>Esc</kbd> stop{armedDef.id === NET_LABEL_SYMBOL && '. It takes the name of an unpaired label, so two clicks make a link'}
+                {coarse ? (
+                  <>Placing <strong>{armedDef.name}</strong>. Touch and drag to aim, lift to place.</>
+                ) : (
+                  <>Placing <strong>{armedDef.name}</strong>. Click to place, <kbd>R</kbd> rotate, <kbd>F</kbd> flip, <kbd>Esc</kbd> stop</>
+                )}
+                {armedDef.id === NET_LABEL_SYMBOL && '. It takes the name of an unpaired label, so two placements make a link'}
+                {coarse && <button className="hint-btn" onClick={() => setArmed(null)}>Done</button>}
               </div>
             )}
             {drawTool && !armedDef && (
               <div className="canvas-hint" role="status">
-                Drag to draw a {tool === 'line' ? 'line' : tool === 'rect' ? 'rectangle' : 'ellipse'}. <kbd>Shift</kbd> {tool === 'line' ? 'snaps to 45°' : 'keeps it square'}, <kbd>Esc</kbd> to stop
+                {coarse ? (
+                  <>Drag to draw a {tool === 'line' ? 'line' : tool === 'rect' ? 'rectangle' : 'ellipse'}.</>
+                ) : (
+                  <>Drag to draw a {tool === 'line' ? 'line' : tool === 'rect' ? 'rectangle' : 'ellipse'}. <kbd>Shift</kbd> {tool === 'line' ? 'snaps to 45°' : 'keeps it square'}, <kbd>Esc</kbd> to stop</>
+                )}
+                {coarse && <button className="hint-btn" onClick={() => chooseTool('select')}>Done</button>}
               </div>
             )}
             {tool === 'text' && !armedDef && (
               <div className="canvas-hint" role="status">
-                Click where the text should go. <kbd>Esc</kbd> to cancel
+                {coarse ? <>Tap where the text should go.</> : <>Click where the text should go. <kbd>Esc</kbd> to cancel</>}
+                {coarse && <button className="hint-btn" onClick={() => chooseTool('select')}>Done</button>}
               </div>
             )}
             {editing && (
@@ -1320,7 +1529,8 @@ export default function Editor({ armId, loadExample, onToast }: Props) {
                 style={{
                   left: view.x + editing.note.x * view.k,
                   top: view.y + (editing.note.y - editing.note.size) * view.k,
-                  fontSize: editing.note.size * view.k,
+                  // iOS zooms the whole page into any field under 16px, so a finger-sized floor keeps the layout still.
+                  fontSize: Math.max(coarse ? 16 : 0, editing.note.size * view.k),
                   fontWeight: editing.note.bold ? 700 : 400,
                   lineHeight: NOTE_LINE,
                   textAlign: editing.note.align === 'middle' ? 'center' : editing.note.align === 'end' ? 'right' : 'left',
@@ -1331,7 +1541,7 @@ export default function Editor({ armId, loadExample, onToast }: Props) {
             )}
             {!armedDef && !editing && selCount > 1 && (
               <div className="canvas-hint" role="status">
-                {selCount} selected
+                {selCount} selected{multi ? '. Tap more to add or remove.' : ''}
               </div>
             )}
           </div>
@@ -1339,7 +1549,11 @@ export default function Editor({ armId, loadExample, onToast }: Props) {
         <SheetTabs sheets={sheetSummaries} onOpen={openSheet} onAdd={addSheet} />
       </section>
 
-      <aside className="inspector" aria-label="Inspector">
+      <aside className={`inspector${panel === 'details' ? ' is-open' : ''}`} aria-label="Inspector">
+        <div className="panel-head only-compact">
+          <h2>Details</h2>
+          <button className="icon-btn" onClick={() => setPanel(null)} aria-label="Close inspector"><CloseIcon /></button>
+        </div>
         <Inspector
           doc={doc}
           selection={selection}
@@ -1384,5 +1598,6 @@ export default function Editor({ armId, loadExample, onToast }: Props) {
   function pick(id: string) {
     setArmed((cur) => (cur === id ? null : id))
     setArmedOrient({ rot: 0, mirror: false })
+    setPanel(null)
   }
 }

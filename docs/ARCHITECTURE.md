@@ -14,7 +14,8 @@ src/
   editor/               the schematic editor (lazy-loaded chunk)
     Editor.tsx            canvas, pointer handling and layout (the one big component)
     ui/                   Inspector, ShapeView, PaletteButton, SheetTabs, ProjectPanel (sheets, nets,
-                          net label fields), CommitField, editor state types, key helpers
+                          net label fields), CommitField, Menu (popover), gestures (pinch and double-tap
+                          maths), editor state types, key helpers
     actions/              pure operations: history reducer (one sheet), project reducer (all sheets,
                           one undo history), transform (rotate/flip), align/distribute, selection,
                           clipboard, fit-to-sheet checks
@@ -28,7 +29,8 @@ src/
     symbols.ts, primitives.ts, categories.ts, types.ts, scale.ts, geometry.ts   (data + sizing)
     Glyph.tsx             React renderer      svg.ts   standalone SVG serialiser      search.ts
   shared/               framework-light utilities with no feature knowledge
-    geometry.ts (grid, Pt, Rect), router.ts, storage.ts, download.ts, print.ts, Icons.tsx
+    geometry.ts (grid, Pt, Rect), router.ts, storage.ts, download.ts, print.ts, Icons.tsx,
+                          useMedia.ts (media-query hook, coarse-pointer check)
   styles/               tokens.css (design tokens), app.css, editor.css
 ```
 
@@ -82,6 +84,30 @@ project. `model/nets.ts` derives everything from that: cross-references drawn un
 list, and the issues (a name used once, an unnamed label, a label with no wire, two names on one wire).
 Nothing derived is stored, so it can never go stale. `model/netlabel.ts` draws the name inside the flag
 and keeps it readable when the label is mirrored or upside down.
+
+## Small screens and touch
+
+One layout rule drives everything: at 1100 px and above the editor is three columns (palette, canvas,
+inspector). Below that the palette and inspector leave the grid and become fixed panels that slide over
+the canvas, opened from the toolbar's Parts and Details buttons and closed by a scrim, Escape, or picking
+a part. Under 640 px they rise from the bottom as sheets and the toolbar moves below the canvas, where a
+thumb reaches it, and scrolls sideways. All of this is CSS in `styles/editor.css`; the only state in
+`Editor.tsx` is which panel is open (`panel`).
+
+Input is handled with pointer events, so mouse, pen and touch share one code path. What differs for touch:
+
+- a finger on empty canvas pans (a mouse starts a selection box), and **Select several** (`multi`) brings
+  the box back and acts as Shift for taps;
+- two fingers pinch and pan at once (`gestures.ts#pinchView`), and a second finger cancels whatever the
+  first was doing, so a drag is never half-applied;
+- placing a part shows the ghost while the finger is down and drops it on lift, because a finger hides
+  the spot it is pointing at;
+- the drag threshold is larger (`TOUCH_SLOP`), double-tap is detected from pointer timing rather than the
+  browser's `dblclick`, and `(pointer: coarse)` enlarges buttons and terminal and wire hit areas, which are
+  sized in screen pixels through the `--inv-k` custom property (one over the zoom).
+
+`Menu.tsx` positions its popover against the viewport, not its parent, so a scrolling toolbar cannot clip
+it, and it opens upward when the button is low on the screen.
 
 ## Known follow-up
 

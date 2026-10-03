@@ -5,11 +5,14 @@ import type { Pt } from '@/shared/geometry'
 export const STORAGE_KEY = 'es.doc.v1'
 /** The drawing with all its sheets. */
 export const PROJECT_KEY = 'es.project.v2'
-export const MIN_ZOOM = 0.3
+/** Low enough that an A1 sheet fits on a phone screen. */
+export const MIN_ZOOM = 0.1
 export const MAX_ZOOM = 3
 export const SNAP_RADIUS = 18
 /** Screen pixels a press must travel before it counts as a drag rather than a click. */
 export const DRAG_THRESHOLD = 4
+/** Same idea for a finger, which wobbles more than a mouse. */
+export const TOUCH_SLOP = 10
 export const LABEL_SNAP = 5
 
 export type Tool = 'select' | 'pan' | 'text' | 'line' | 'rect' | 'ellipse'
